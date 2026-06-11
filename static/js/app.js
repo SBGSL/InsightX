@@ -18,10 +18,6 @@ let state = {
   unclassifiedRows: [],
 };
 
-/* ── Date default ── */
-const dateInput = document.getElementById('uploadDate');
-dateInput.value = new Date().toISOString().slice(0, 10);
-
 /* ── File input ── */
 const fileInput = document.getElementById('fileInput');
 const dropZone  = document.getElementById('dropZone');
@@ -61,7 +57,6 @@ uploadBtn.addEventListener('click', async () => {
 
   const fd = new FormData();
   fd.append('file', file);
-  fd.append('upload_date', dateInput.value);
   fd.append('session_id', Date.now().toString());
 
   try {
