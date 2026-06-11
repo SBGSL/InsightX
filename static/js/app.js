@@ -143,16 +143,23 @@ document.getElementById('saveClassBtn').addEventListener('click', async () => {
 
   if (missing) { alert('Please classify all resources before saving.'); return; }
 
-  // 1. Save manual selections
-  const res = await fetch('/classify', {
+  // Build manually classified rows using same structure as auto rows
+  const manualRows = state.unclassifiedRows.map((r, i) => ({
+    ...r, type: selections[i].type
+  }));
+
+  // Single commit of ALL rows (auto + manual) for the date — one atomic replace
+  const allRows = [...state.classifiedRows, ...manualRows];
+
+  // Save learned type mappings to DB (for future auto-classification)
+  await fetch('/classify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: state.sessionId, selections }),
   });
-  const d = await res.json();
 
-  // 2. Commit auto-classified rows
-  await commitRows(state.classifiedRows);
+  const ok = await commitRows(allRows);
+  if (!ok) return;
 
   show('successBanner');
   hide('manualCard');
@@ -163,7 +170,8 @@ document.getElementById('saveClassBtn').addEventListener('click', async () => {
 
 /* ── Commit auto-only ── */
 document.getElementById('commitOnlyBtn').addEventListener('click', async () => {
-  await commitRows(state.classifiedRows);
+  const ok = await commitRows(state.classifiedRows);
+  if (!ok) return;
   show('successBanner');
   hide('commitCard');
   hide('autoClassifiedCard');
@@ -171,12 +179,24 @@ document.getElementById('commitOnlyBtn').addEventListener('click', async () => {
 });
 
 async function commitRows(rows) {
-  if (!rows.length) return;
-  await fetch('/commit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ rows }),
-  });
+  if (!rows.length) { alert('No rows to commit.'); return false; }
+  try {
+    const res = await fetch('/commit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert('Commit failed: ' + (data.error || res.statusText));
+      return false;
+    }
+    console.log('Committed', data.committed, 'rows for', rows[0]?.upload_date);
+    return true;
+  } catch (e) {
+    alert('Commit failed: ' + e.message);
+    return false;
+  }
 }
 
 function resetUpload() {
@@ -189,26 +209,33 @@ function resetUpload() {
 
 /* ── Available Dates ── */
 async function loadAvailableDates() {
-  const res  = await fetch('/available-dates');
-  const data = await res.json();
-  const chips  = document.getElementById('dateChips');
-  const empty  = document.getElementById('datesEmpty');
-  const count  = document.getElementById('datesCount');
+  const chips = document.getElementById('dateChips');
+  const empty = document.getElementById('datesEmpty');
+  const count = document.getElementById('datesCount');
+  chips.innerHTML = '<span class="muted small">Loading…</span>';
 
-  if (!data.length) {
-    chips.innerHTML = '';
-    count.textContent = '0 dates';
-    show('datesEmpty');
-    return;
+  try {
+    const res  = await fetch('/available-dates');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    if (!data.length) {
+      chips.innerHTML = '';
+      count.textContent = '0 dates';
+      show('datesEmpty');
+      return;
+    }
+    hide('datesEmpty');
+    count.textContent = data.length + ' date' + (data.length > 1 ? 's' : '');
+    chips.innerHTML = data.map(d => `
+      <div class="date-chip">
+        <span class="date-chip-date">${d.upload_date}</span>
+        <span class="date-chip-rows">${d.rows} resources</span>
+        <span class="date-chip-cost">₹${fmt(d.total)}</span>
+      </div>`).join('');
+  } catch (e) {
+    chips.innerHTML = `<span class="muted small">Error loading dates: ${e.message}</span>`;
   }
-  hide('datesEmpty');
-  count.textContent = data.length + ' date' + (data.length > 1 ? 's' : '');
-  chips.innerHTML = data.map(d => `
-    <div class="date-chip">
-      <span class="date-chip-date">${d.upload_date}</span>
-      <span class="date-chip-rows">${d.rows} resources</span>
-      <span class="date-chip-cost">₹${fmt(d.total)}</span>
-    </div>`).join('');
 }
 
 /* ── Report ── */

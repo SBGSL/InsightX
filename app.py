@@ -236,38 +236,11 @@ def classify():
             (key, sel['type'], 'user')
         )
 
-    # Fetch pending rows for this session
-    pending = db.execute(
-        'SELECT * FROM pending_classifications WHERE session_id = ?', (session_id,)
-    ).fetchall()
-
-    type_map = {sel['resource'].strip().lower(): sel['type'] for sel in selections}
-
-    rows_to_insert = []
-    for p in pending:
-        t = type_map.get(p['resource'].strip().lower())
-        if t:
-            rows_to_insert.append((
-                p['upload_date'], p['resource'], p['resource_id'], p['resource_type'],
-                p['resource_group'], p['subscription_name'], p['cost_inr'],
-                p['cost_usd'], p['currency'], t
-            ))
-
-    if rows_to_insert:
-        upload_date = rows_to_insert[0][0]
-        db.execute('DELETE FROM daily_costs WHERE upload_date = ?', (upload_date,))
-        db.executemany(
-            '''INSERT INTO daily_costs
-               (upload_date, resource, resource_id, resource_type, resource_group,
-                subscription_name, cost_inr, cost_usd, currency, type)
-               VALUES (?,?,?,?,?,?,?,?,?,?)''',
-            rows_to_insert
-        )
-
+    # Clean up pending session
     db.execute('DELETE FROM pending_classifications WHERE session_id = ?', (session_id,))
     db.commit()
 
-    return jsonify({'saved': len(rows_to_insert)})
+    return jsonify({'saved': len(selections)})
 
 
 @app.route('/commit', methods=['POST'])
