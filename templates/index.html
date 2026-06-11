@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>InsightX — Cost Segregation</title>
+<link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo">
+      <span class="logo-icon">⬡</span>
+      <span class="logo-text">InsightX</span>
+    </div>
+    <nav>
+      <button class="nav-btn active" data-view="upload">
+        <svg viewBox="0 0 24 24"><path d="M19 13v6H5v-6H3v6a2 2 0 002 2h14a2 2 0 002-2v-6h-2zm-7-9l-4 4h3v8h2V8h3l-4-4z"/></svg>
+        Upload
+      </button>
+      <button class="nav-btn" data-view="report">
+        <svg viewBox="0 0 24 24"><path d="M9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4zm2 2H5V5h14v14zm0-16H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2z"/></svg>
+        Report
+      </button>
+      <button class="nav-btn" data-view="history">
+        <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 017-7 7 7 0 110 14 6.99 6.99 0 01-4.95-2.05l-1.41 1.41A8.99 8.99 0 0013 21a9 9 0 000-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+        History
+      </button>
+    </nav>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- ── UPLOAD VIEW ── -->
+    <section id="view-upload" class="view active">
+      <div class="page-header">
+        <h1>Upload Daily Cost Sheet</h1>
+        <p>Upload the Azure cost Excel export. Resources will be auto-classified where possible.</p>
+      </div>
+
+      <div class="card upload-card">
+        <div class="upload-zone" id="dropZone">
+          <svg viewBox="0 0 24 24" class="upload-icon"><path d="M19 13v6H5v-6H3v6a2 2 0 002 2h14a2 2 0 002-2v-6h-2zm-7-9l-4 4h3v8h2V8h3l-4-4z"/></svg>
+          <p>Drag &amp; drop your <strong>.xlsx</strong> file here</p>
+          <p class="sub">or</p>
+          <label class="btn btn-primary">
+            Browse File
+            <input type="file" id="fileInput" accept=".xlsx" hidden />
+          </label>
+          <div id="fileName" class="file-name"></div>
+        </div>
+
+        <div class="upload-meta">
+          <label>
+            Cost Date
+            <input type="date" id="uploadDate" />
+          </label>
+          <button class="btn btn-primary" id="uploadBtn" disabled>Process File</button>
+        </div>
+      </div>
+
+      <!-- Processing indicator -->
+      <div id="processing" class="card hidden">
+        <div class="spinner"></div>
+        <p>Processing file…</p>
+      </div>
+
+      <!-- Auto-classified summary -->
+      <div id="autoClassifiedCard" class="card hidden">
+        <div class="card-header">
+          <h2>Auto-classified Resources</h2>
+          <span id="autoCount" class="badge badge-green"></span>
+        </div>
+        <p class="muted">These resources were classified automatically using the master mapping and rules.</p>
+        <div class="table-wrap">
+          <table id="autoTable">
+            <thead><tr>
+              <th>Resource</th><th>Azure Type</th><th>Cost (INR)</th><th>Assigned Type</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Manual classification -->
+      <div id="manualCard" class="card hidden">
+        <div class="card-header">
+          <h2>Manual Classification Required</h2>
+          <span id="manualCount" class="badge badge-orange"></span>
+        </div>
+        <p class="muted">These resources could not be classified automatically. Please select the correct Type for each.</p>
+        <div class="table-wrap">
+          <table id="manualTable">
+            <thead><tr>
+              <th>Resource</th><th>Azure Type</th><th>Resource Group</th><th>Cost (INR)</th><th>Type</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-primary" id="saveClassBtn">Save &amp; Commit All</button>
+        </div>
+      </div>
+
+      <!-- Commit button when no manual needed -->
+      <div id="commitCard" class="card hidden">
+        <div class="card-header">
+          <h2>Ready to Commit</h2>
+        </div>
+        <p class="muted">All resources were classified automatically. Click below to save this day's data.</p>
+        <div class="card-footer">
+          <button class="btn btn-primary" id="commitOnlyBtn">Commit to Database</button>
+        </div>
+      </div>
+
+      <div id="successBanner" class="banner banner-green hidden">
+        ✓ Data saved successfully! Switch to <strong>Report</strong> to view the cost table.
+      </div>
+    </section>
+
+    <!-- ── REPORT VIEW ── -->
+    <section id="view-report" class="view">
+      <div class="page-header">
+        <h1>Customer Cost Report</h1>
+        <p>Apportioned compute cost + direct storage cost per customer.</p>
+      </div>
+
+      <div class="card">
+        <div class="report-controls">
+          <label>
+            Days
+            <select id="daysSelect">
+              <option value="7">Last 7 days</option>
+              <option value="15" selected>Last 15 days</option>
+              <option value="30">Last 30 days</option>
+            </select>
+          </label>
+          <button class="btn btn-primary" id="loadReportBtn">Load Report</button>
+          <button class="btn btn-outline" id="exportCsvBtn">Export CSV</button>
+        </div>
+
+        <div id="reportMeta" class="muted small"></div>
+
+        <div class="table-wrap" id="reportTableWrap">
+          <table id="reportTable">
+            <thead><tr>
+              <th>#</th>
+              <th>Customer Name</th>
+              <th>A — Storage Cost (INR)</th>
+              <th>B — Compute Cost Apportioned (INR)</th>
+              <th>Total Cost (INR)</th>
+            </tr></thead>
+            <tbody></tbody>
+            <tfoot></tfoot>
+          </table>
+        </div>
+        <div id="reportEmpty" class="empty-state hidden">No data available for this period.</div>
+      </div>
+    </section>
+
+    <!-- ── HISTORY VIEW ── -->
+    <section id="view-history" class="view">
+      <div class="page-header">
+        <h1>Upload History</h1>
+        <p>All dates for which cost data has been committed.</p>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table id="historyTable">
+            <thead><tr><th>Date</th><th>Resources</th><th>Total Cost (INR)</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="historyEmpty" class="empty-state hidden">No uploads yet.</div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

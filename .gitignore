@@ -1,0 +1,5 @@
+data/insightx.db
+data/master.xlsx
+__pycache__/
+*.pyc
+.env
