@@ -5,7 +5,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('view-' + btn.dataset.view).classList.add('active');
-    if (btn.dataset.view === 'report') loadReport();
+    if (btn.dataset.view === 'report') { loadAvailableDates(); }
     if (btn.dataset.view === 'history') loadHistory();
   });
 });
@@ -56,6 +56,7 @@ uploadBtn.addEventListener('click', async () => {
   hide('manualCard');
   hide('commitCard');
   hide('successBanner');
+  hide('replaceBanner');
   show('processing');
 
   const fd = new FormData();
@@ -73,6 +74,12 @@ uploadBtn.addEventListener('click', async () => {
     state.uploadDate = data.upload_date;
     state.classifiedRows = data.classified;
     state.unclassifiedRows = data.unclassified;
+
+    if (data.existing_rows > 0) {
+      const warn = document.getElementById('replaceBanner');
+      warn.textContent = `⚠ ${data.existing_rows} existing rows for ${data.upload_date} will be replaced when you commit.`;
+      warn.classList.remove('hidden');
+    }
 
     renderAutoClassified(data.classified);
     if (data.unclassified.length > 0) {
@@ -180,6 +187,30 @@ function resetUpload() {
   state = { sessionId: null, uploadDate: null, classifiedRows: [], unclassifiedRows: [] };
 }
 
+/* ── Available Dates ── */
+async function loadAvailableDates() {
+  const res  = await fetch('/available-dates');
+  const data = await res.json();
+  const chips  = document.getElementById('dateChips');
+  const empty  = document.getElementById('datesEmpty');
+  const count  = document.getElementById('datesCount');
+
+  if (!data.length) {
+    chips.innerHTML = '';
+    count.textContent = '0 dates';
+    show('datesEmpty');
+    return;
+  }
+  hide('datesEmpty');
+  count.textContent = data.length + ' date' + (data.length > 1 ? 's' : '');
+  chips.innerHTML = data.map(d => `
+    <div class="date-chip">
+      <span class="date-chip-date">${d.upload_date}</span>
+      <span class="date-chip-rows">${d.rows} resources</span>
+      <span class="date-chip-cost">₹${fmt(d.total)}</span>
+    </div>`).join('');
+}
+
 /* ── Report ── */
 document.getElementById('loadReportBtn').addEventListener('click', loadReport);
 
@@ -191,13 +222,13 @@ async function loadReport() {
   const meta = document.getElementById('reportMeta');
   if (data.dates.length === 0) {
     meta.textContent = '';
-    hide('reportTableWrap');
+    document.getElementById('reportTableWrap').style.display = 'none';
     show('reportEmpty');
     return;
   }
 
   meta.textContent = `Data from ${data.dates[0]} to ${data.dates[data.dates.length - 1]} (${data.dates.length} day${data.dates.length>1?'s':''})`;
-  show('reportTableWrap');
+  document.getElementById('reportTableWrap').style.display = 'block';
   hide('reportEmpty');
 
   const tbody = document.querySelector('#reportTable tbody');

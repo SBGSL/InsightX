@@ -116,6 +116,7 @@
         </div>
       </div>
 
+      <div id="replaceBanner" class="banner banner-orange hidden"></div>
       <div id="successBanner" class="banner banner-green hidden">
         ✓ Data saved successfully! Switch to <strong>Report</strong> to view the cost table.
       </div>
@@ -128,10 +129,21 @@
         <p>Apportioned compute cost + direct storage cost per customer.</p>
       </div>
 
+      <!-- Available dates -->
+      <div class="card" id="availableDatesCard">
+        <div class="card-header">
+          <h2>Available Dates</h2>
+          <span id="datesCount" class="badge badge-green"></span>
+        </div>
+        <div id="dateChips" class="date-chips"></div>
+        <div id="datesEmpty" class="empty-state hidden">No data uploaded yet. Go to Upload tab to add data.</div>
+      </div>
+
+      <!-- Report -->
       <div class="card">
         <div class="report-controls">
           <label>
-            Days
+            Period
             <select id="daysSelect">
               <option value="7">Last 7 days</option>
               <option value="15" selected>Last 15 days</option>
@@ -144,7 +156,7 @@
 
         <div id="reportMeta" class="muted small"></div>
 
-        <div class="table-wrap" id="reportTableWrap">
+        <div class="table-wrap" id="reportTableWrap" style="display:none">
           <table id="reportTable">
             <thead><tr>
               <th>#</th>

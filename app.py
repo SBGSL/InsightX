@@ -205,12 +205,18 @@ def upload():
         )
         db.commit()
 
+    # Check if data already exists for this date
+    existing = db.execute(
+        'SELECT COUNT(*) as cnt FROM daily_costs WHERE upload_date = ?', (upload_date,)
+    ).fetchone()['cnt']
+
     return jsonify({
         'session_id': session_id,
         'upload_date': upload_date,
         'classified_count': len(classified),
         'unclassified': unclassified,
         'classified': classified,
+        'existing_rows': existing,
     })
 
 
@@ -248,6 +254,8 @@ def classify():
             ))
 
     if rows_to_insert:
+        upload_date = rows_to_insert[0][0]
+        db.execute('DELETE FROM daily_costs WHERE upload_date = ?', (upload_date,))
         db.executemany(
             '''INSERT INTO daily_costs
                (upload_date, resource, resource_id, resource_type, resource_group,
@@ -264,10 +272,14 @@ def classify():
 
 @app.route('/commit', methods=['POST'])
 def commit():
-    """Commit already-classified rows (no pending) to the DB."""
+    """Commit already-classified rows (no pending) to the DB, replacing any existing data for that date."""
     data = request.json
     rows = data.get('rows', [])
+    if not rows:
+        return jsonify({'committed': 0})
     db = get_db()
+    upload_date = rows[0]['upload_date']
+    db.execute('DELETE FROM daily_costs WHERE upload_date = ?', (upload_date,))
     db.executemany(
         '''INSERT INTO daily_costs
            (upload_date, resource, resource_id, resource_type, resource_group,
@@ -279,6 +291,16 @@ def commit():
     )
     db.commit()
     return jsonify({'committed': len(rows)})
+
+
+@app.route('/available-dates')
+def available_dates():
+    db = get_db()
+    rows = db.execute(
+        '''SELECT upload_date, COUNT(*) as rows, SUM(cost_inr) as total
+           FROM daily_costs GROUP BY upload_date ORDER BY upload_date DESC'''
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
 
 
 @app.route('/report')
