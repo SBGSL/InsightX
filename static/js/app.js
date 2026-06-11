@@ -96,18 +96,52 @@ uploadBtn.addEventListener('click', async () => {
   }
 });
 
-/* ── Render auto-classified ── */
+/* ── Render classification summary (per date × per type) ── */
 function renderAutoClassified(rows) {
   if (!rows.length) return;
-  const tbody = document.querySelector('#autoTable tbody');
-  tbody.innerHTML = rows.map(r => `
-    <tr>
-      <td>${esc(r.resource)}</td>
-      <td>${esc(r.resource_type)}</td>
-      <td class="num">${fmt(r.cost_inr)}</td>
-      <td>${typeChip(r.type)}</td>
-    </tr>`).join('');
-  document.getElementById('autoCount').textContent = rows.length + ' resources';
+
+  // Group by date → type → {count, cost}
+  const byDate = {};
+  for (const r of rows) {
+    const d = r.upload_date;
+    const t = r.type;
+    if (!byDate[d]) byDate[d] = {};
+    if (!byDate[d][t]) byDate[d][t] = { count: 0, cost: 0 };
+    byDate[d][t].count++;
+    byDate[d][t].cost += r.cost_inr;
+  }
+
+  const TYPE_ORDER = [
+    'Customer Attributed (Compute)',
+    'Customer Specific (Storage,Read/write)',
+    'Platform',
+  ];
+
+  const html = Object.keys(byDate).sort().map(d => {
+    const types = byDate[d];
+    const dateTotal = Object.values(types).reduce((s, v) => s + v.cost, 0);
+    const dateCount = Object.values(types).reduce((s, v) => s + v.count, 0);
+    const rows = TYPE_ORDER.filter(t => types[t]).map(t => `
+      <tr>
+        <td>${typeChip(t)}</td>
+        <td class="num">${types[t].count}</td>
+        <td class="num">₹${fmt(types[t].cost)}</td>
+      </tr>`).join('');
+    return `
+      <div class="summary-date-block">
+        <div class="summary-date-header">
+          <span class="summary-date-label">${d}</span>
+          <span class="muted small">${dateCount} resources &nbsp;·&nbsp; ₹${fmt(dateTotal)}</span>
+        </div>
+        <table class="summary-table">
+          <thead><tr><th>Type</th><th>Resources</th><th>Cost (INR)</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  document.getElementById('summaryByDate').innerHTML = html;
+  document.getElementById('autoCount').textContent = rows.length + ' resources across ' + Object.keys(byDate).length + ' date(s)';
   show('autoClassifiedCard');
 }
 

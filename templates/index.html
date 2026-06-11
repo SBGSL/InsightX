@@ -64,21 +64,13 @@
         <p>Processing file…</p>
       </div>
 
-      <!-- Auto-classified summary -->
+      <!-- Classification summary -->
       <div id="autoClassifiedCard" class="card hidden">
         <div class="card-header">
-          <h2>Auto-classified Resources</h2>
+          <h2>Classification Summary</h2>
           <span id="autoCount" class="badge badge-green"></span>
         </div>
-        <p class="muted">These resources were classified automatically using the master mapping and rules.</p>
-        <div class="table-wrap">
-          <table id="autoTable">
-            <thead><tr>
-              <th>Resource</th><th>Azure Type</th><th>Cost (INR)</th><th>Assigned Type</th>
-            </tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <div id="summaryByDate"></div>
       </div>
 
       <!-- Manual classification -->
