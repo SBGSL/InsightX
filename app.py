@@ -78,52 +78,150 @@ def init_db():
 # Classification logic
 # ---------------------------------------------------------------------------
 
+# Maps Azure provider-format resource types → human-readable names used in rules
+AZURE_PROVIDER_TYPE_MAP = {
+    'microsoft.compute/virtualmachinescalesets': 'Virtual machine scale set',
+    'microsoft.compute/virtualmachines':         'Virtual machine',
+    'microsoft.compute/disks':                   'Disk',
+    'microsoft.storage/storageaccounts':         'Storage account',
+    'microsoft.dbforpostgresql/flexibleservers': 'Azure Database for PostgreSQL flexible server',
+    'microsoft.dbformysql/flexibleservers':      'Azure Database for MySQL flexible server',
+    'microsoft.network/natgateways':             'NAT gateway',
+    'microsoft.network/loadbalancers':           'Load balancer',
+    'microsoft.network/privateendpoints':        'Private endpoint',
+    'microsoft.network/publicipaddresses':       'Public IP address',
+    'microsoft.network/privatednszones':         'Private DNS zone',
+}
+
+PLATFORM_STORAGE = {
+    'bivasharefolder', 'checkpointsjio', 'bivastoragejio',
+    'bivasystemtablesjio', 'bivadbmigration', 'bivajiobilling',
+}
+
+PLATFORM_TYPES = {
+    'Azure Database for MySQL flexible server',
+    'Azure Database for PostgreSQL flexible server',
+    'Disk',
+    'Load balancer',
+    'NAT gateway',
+    'Private DNS zone',
+    'Private endpoint',
+    'Public IP address',
+    'Virtual machine',
+}
+
+def normalize_resource_type(rt: str) -> str:
+    """Accept both provider format and human-readable format."""
+    return AZURE_PROVIDER_TYPE_MAP.get(rt.strip().lower(), rt.strip())
+
 def classify_resource(resource: str, resource_azure_type: str, resource_group: str, db) -> str | None:
     key = resource.strip().lower()
     row = db.execute('SELECT type FROM resource_type_map WHERE resource_key = ?', (key,)).fetchone()
     if row:
         return row['type']
 
-    # Rule-based matching from master sheet logic
-    rt = (resource_azure_type or '').strip()
-    name = resource.strip().lower()
+    rt   = normalize_resource_type(resource_azure_type or '')
+    name = key
 
-    # Virtual machine scale sets: sparkpool → Customer Attributed (Compute)
     if rt == 'Virtual machine scale set':
         if 'sparkpool' in name:
             return 'Customer Attributed (Compute)'
-        # bivapool / default → Platform
         if any(p in name for p in ('bivapool', 'default')):
             return 'Platform'
 
-    # Storage accounts: shared platform stores are known keywords
     if rt == 'Storage account':
-        platform_storage_keywords = [
-            'bivasharefolder', 'checkpointsjio', 'bivastoragejio',
-            'bivasystemtablesjio', 'bivadbmigration', 'bivajiobilling',
-        ]
-        if name in platform_storage_keywords:
+        if name in PLATFORM_STORAGE:
             return 'Platform'
-        # All other storage accounts with business-like names → Customer Specific
-        # Heuristic: if not a known platform name, likely customer specific
         return 'Customer Specific (Storage,Read/write)'
 
-    # Everything else is Platform
-    platform_types = {
-        'Azure Database for MySQL flexible server',
-        'Azure Database for PostgreSQL flexible server',
-        'Disk',
-        'Load balancer',
-        'NAT gateway',
-        'Private DNS zone',
-        'Private endpoint',
-        'Public IP address',
-        'Virtual machine',
-    }
-    if rt in platform_types:
+    if rt in PLATFORM_TYPES:
         return 'Platform'
 
     return None  # unknown — needs user input
+
+
+def parse_rows_from_sheet(ws) -> list[dict]:
+    """
+    Parse either file format into a unified list of per-resource aggregated dicts.
+
+    Format A (master export):
+        Headers include 'Resource', 'ResourceType' (human-readable), 'SubscriptionName', etc.
+
+    Format B (daily cost export):
+        Headers include 'UsageDate', 'ResourceId', 'ResourceType' (provider format).
+        No 'Resource' column — name extracted from ResourceId.
+        Multiple rows per resource (different meters) — costs are summed.
+    """
+    headers = [str(ws.cell(1, c).value or '').strip() for c in range(1, ws.max_column + 1)]
+    col = {h.lower(): i + 1 for i, h in enumerate(headers)}
+
+    def gc(row, name, default=None):
+        idx = col.get(name.lower())
+        return ws.cell(row, idx).value if idx else default
+
+    has_resource_col  = 'resource' in col
+    has_usage_date    = 'usagedate' in col
+
+    if has_resource_col and not has_usage_date:
+        # ── Format A: master-style ──
+        rows = []
+        for r in range(2, ws.max_row + 1):
+            resource = str(gc(r, 'Resource') or '').strip()
+            if not resource:
+                continue
+            rows.append({
+                'resource':        resource,
+                'resource_id':     str(gc(r, 'ResourceId') or ''),
+                'resource_type':   str(gc(r, 'ResourceType') or ''),
+                'resource_group':  str(gc(r, 'ResourceGroupName') or ''),
+                'subscription_name': str(gc(r, 'SubscriptionName') or ''),
+                'cost_inr':        float(gc(r, 'Cost') or 0),
+                'cost_usd':        float(gc(r, 'CostUSD') or 0),
+                'currency':        str(gc(r, 'Currency') or 'INR'),
+                'file_date':       None,
+            })
+        return rows
+
+    else:
+        # ── Format B: daily cost export ──
+        # Aggregate multiple meter rows → one row per resource
+        from collections import defaultdict
+        agg = {}   # resource_name → aggregated dict
+        for r in range(2, ws.max_row + 1):
+            rid  = str(gc(r, 'ResourceId') or '').strip()
+            if not rid:
+                continue
+            name = rid.split('/')[-1].lower()
+            if not name:
+                continue
+            rt   = str(gc(r, 'ResourceType') or '').strip()
+            rg   = str(gc(r, 'ResourceGroupName') or '').strip()
+            cost_inr = float(gc(r, 'Cost') or 0)
+            cost_usd = float(gc(r, 'CostUSD') or 0)
+            currency = str(gc(r, 'Currency') or 'INR')
+            file_date = str(gc(r, 'UsageDate') or '').strip()
+            # Normalise date: may be datetime object or string
+            if hasattr(file_date, 'date'):
+                file_date = file_date.date().isoformat()
+            elif file_date and len(file_date) > 10:
+                file_date = file_date[:10]
+
+            if name not in agg:
+                agg[name] = {
+                    'resource':        name,
+                    'resource_id':     rid,
+                    'resource_type':   rt,
+                    'resource_group':  rg,
+                    'subscription_name': '',
+                    'cost_inr':        0.0,
+                    'cost_usd':        0.0,
+                    'currency':        currency,
+                    'file_date':       file_date,
+                }
+            agg[name]['cost_inr'] += cost_inr
+            agg[name]['cost_usd'] += cost_usd
+
+        return list(agg.values())
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +236,7 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload():
     file = request.files.get('file')
-    upload_date = request.form.get('upload_date') or date.today().isoformat()
+    form_date = request.form.get('upload_date') or ''
     session_id = request.form.get('session_id') or datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
 
     if not file:
@@ -147,51 +245,38 @@ def upload():
     try:
         wb = openpyxl.load_workbook(file, data_only=True)
         ws = wb.active
-        headers = [str(ws.cell(1, c).value or '').strip() for c in range(1, ws.max_column + 1)]
     except Exception as e:
         return jsonify({'error': f'Cannot read file: {e}'}), 400
 
-    # Map column names flexibly
-    col = {h.lower(): i + 1 for i, h in enumerate(headers)}
-    def gc(row, name, default=None):
-        idx = col.get(name.lower())
-        return ws.cell(row, idx).value if idx else default
+    try:
+        raw_rows = parse_rows_from_sheet(ws)
+    except Exception as e:
+        return jsonify({'error': f'Error parsing sheet: {e}'}), 400
+
+    if not raw_rows:
+        return jsonify({'error': 'No data rows found in file. Check the file format.'}), 400
+
+    # Determine the upload date:
+    # prefer the file's own UsageDate, fall back to form value, then today
+    file_date = raw_rows[0].get('file_date') or ''
+    upload_date = file_date or form_date or date.today().isoformat()
 
     db = get_db()
-    classified = []
+    classified   = []
     unclassified = []
 
-    for r in range(2, ws.max_row + 1):
-        resource = str(gc(r, 'Resource') or '').strip()
-        if not resource:
-            continue
-        resource_id    = str(gc(r, 'ResourceId') or '')
-        resource_type  = str(gc(r, 'ResourceType') or '')
-        resource_group = str(gc(r, 'ResourceGroupName') or '')
-        sub_name       = str(gc(r, 'SubscriptionName') or '')
-        cost_inr       = float(gc(r, 'Cost') or 0)
-        cost_usd       = float(gc(r, 'CostUSD') or 0)
-        currency       = str(gc(r, 'Currency') or 'INR')
-
-        t = classify_resource(resource, resource_type, resource_group, db)
+    for row in raw_rows:
+        resource = row['resource']
+        t = classify_resource(resource, row['resource_type'], row['resource_group'], db)
+        entry = {**row, 'upload_date': upload_date}
+        entry.pop('file_date', None)
         if t:
-            classified.append({
-                'resource': resource, 'resource_id': resource_id,
-                'resource_type': resource_type, 'resource_group': resource_group,
-                'subscription_name': sub_name, 'cost_inr': cost_inr,
-                'cost_usd': cost_usd, 'currency': currency,
-                'upload_date': upload_date, 'type': t,
-            })
+            entry['type'] = t
+            classified.append(entry)
         else:
-            unclassified.append({
-                'resource': resource, 'resource_id': resource_id,
-                'resource_type': resource_type, 'resource_group': resource_group,
-                'subscription_name': sub_name, 'cost_inr': cost_inr,
-                'cost_usd': cost_usd, 'currency': currency,
-                'upload_date': upload_date,
-            })
+            unclassified.append(entry)
 
-    # Store pending unclassified in DB
+    # Store pending unclassified in DB for session
     if unclassified:
         db.execute('DELETE FROM pending_classifications WHERE session_id = ?', (session_id,))
         db.executemany(
@@ -205,18 +290,17 @@ def upload():
         )
         db.commit()
 
-    # Check if data already exists for this date
     existing = db.execute(
         'SELECT COUNT(*) as cnt FROM daily_costs WHERE upload_date = ?', (upload_date,)
     ).fetchone()['cnt']
 
     return jsonify({
-        'session_id': session_id,
-        'upload_date': upload_date,
+        'session_id':       session_id,
+        'upload_date':      upload_date,
         'classified_count': len(classified),
-        'unclassified': unclassified,
-        'classified': classified,
-        'existing_rows': existing,
+        'unclassified':     unclassified,
+        'classified':       classified,
+        'existing_rows':    existing,
     })
 
 
