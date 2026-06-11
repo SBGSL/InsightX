@@ -136,6 +136,7 @@ tfoot td { font-weight: 700; border-top: 2px solid #e5e7eb; padding: 10px 12px; 
 }
 .banner-green  { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
 .banner-orange { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+.banner-blue   { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
 
 /* Date chips */
 .date-chips { display: flex; flex-wrap: wrap; gap: 10px; }

@@ -184,9 +184,9 @@ def parse_rows_from_sheet(ws) -> list[dict]:
 
     else:
         # ── Format B: daily cost export ──
-        # Aggregate multiple meter rows → one row per resource
+        # Aggregate multiple meter rows → one row per (resource, date)
         from collections import defaultdict
-        agg = {}   # resource_name → aggregated dict
+        agg = {}   # (resource_name, date) → aggregated dict
         for r in range(2, ws.max_row + 1):
             rid  = str(gc(r, 'ResourceId') or '').strip()
             if not rid:
@@ -194,32 +194,33 @@ def parse_rows_from_sheet(ws) -> list[dict]:
             name = rid.split('/')[-1].lower()
             if not name:
                 continue
-            rt   = str(gc(r, 'ResourceType') or '').strip()
-            rg   = str(gc(r, 'ResourceGroupName') or '').strip()
+            rt       = str(gc(r, 'ResourceType') or '').strip()
+            rg       = str(gc(r, 'ResourceGroupName') or '').strip()
             cost_inr = float(gc(r, 'Cost') or 0)
             cost_usd = float(gc(r, 'CostUSD') or 0)
             currency = str(gc(r, 'Currency') or 'INR')
-            file_date = str(gc(r, 'UsageDate') or '').strip()
-            # Normalise date: may be datetime object or string
-            if hasattr(file_date, 'date'):
-                file_date = file_date.date().isoformat()
-            elif file_date and len(file_date) > 10:
-                file_date = file_date[:10]
 
-            if name not in agg:
-                agg[name] = {
-                    'resource':        name,
-                    'resource_id':     rid,
-                    'resource_type':   rt,
-                    'resource_group':  rg,
+            raw_date = gc(r, 'UsageDate') or ''
+            if hasattr(raw_date, 'date'):
+                file_date = raw_date.date().isoformat()
+            else:
+                file_date = str(raw_date).strip()[:10]
+
+            key = (name, file_date)
+            if key not in agg:
+                agg[key] = {
+                    'resource':          name,
+                    'resource_id':       rid,
+                    'resource_type':     rt,
+                    'resource_group':    rg,
                     'subscription_name': '',
-                    'cost_inr':        0.0,
-                    'cost_usd':        0.0,
-                    'currency':        currency,
-                    'file_date':       file_date,
+                    'cost_inr':          0.0,
+                    'cost_usd':          0.0,
+                    'currency':          currency,
+                    'file_date':         file_date,
                 }
-            agg[name]['cost_inr'] += cost_inr
-            agg[name]['cost_usd'] += cost_usd
+            agg[key]['cost_inr'] += cost_inr
+            agg[key]['cost_usd'] += cost_usd
 
         return list(agg.values())
 
@@ -236,7 +237,6 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload():
     file = request.files.get('file')
-    form_date = request.form.get('upload_date') or ''
     session_id = request.form.get('session_id') or datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
 
     if not file:
@@ -256,17 +256,13 @@ def upload():
     if not raw_rows:
         return jsonify({'error': 'No data rows found in file. Check the file format.'}), 400
 
-    # Determine the upload date:
-    # prefer the file's own UsageDate, fall back to form value, then today
-    file_date = raw_rows[0].get('file_date') or ''
-    upload_date = file_date or form_date or date.today().isoformat()
-
     db = get_db()
     classified   = []
     unclassified = []
 
     for row in raw_rows:
-        resource = row['resource']
+        resource    = row['resource']
+        upload_date = row.get('file_date') or date.today().isoformat()
         t = classify_resource(resource, row['resource_type'], row['resource_group'], db)
         entry = {**row, 'upload_date': upload_date}
         entry.pop('file_date', None)
@@ -275,6 +271,17 @@ def upload():
             classified.append(entry)
         else:
             unclassified.append(entry)
+
+    # Collect all dates in this file
+    all_dates = sorted(set(r['upload_date'] for r in classified + unclassified))
+
+    # Check which dates already have data
+    existing_by_date = {}
+    for d in all_dates:
+        cnt = db.execute(
+            'SELECT COUNT(*) as cnt FROM daily_costs WHERE upload_date = ?', (d,)
+        ).fetchone()['cnt']
+        existing_by_date[d] = cnt
 
     # Store pending unclassified in DB for session
     if unclassified:
@@ -290,17 +297,13 @@ def upload():
         )
         db.commit()
 
-    existing = db.execute(
-        'SELECT COUNT(*) as cnt FROM daily_costs WHERE upload_date = ?', (upload_date,)
-    ).fetchone()['cnt']
-
     return jsonify({
         'session_id':       session_id,
-        'upload_date':      upload_date,
+        'dates':            all_dates,
         'classified_count': len(classified),
         'unclassified':     unclassified,
         'classified':       classified,
-        'existing_rows':    existing,
+        'existing_by_date': existing_by_date,
     })
 
 
@@ -329,14 +332,16 @@ def classify():
 
 @app.route('/commit', methods=['POST'])
 def commit():
-    """Commit already-classified rows (no pending) to the DB, replacing any existing data for that date."""
+    """Commit rows to DB, replacing all existing data for every date present in the batch."""
     data = request.json
     rows = data.get('rows', [])
     if not rows:
         return jsonify({'committed': 0})
     db = get_db()
-    upload_date = rows[0]['upload_date']
-    db.execute('DELETE FROM daily_costs WHERE upload_date = ?', (upload_date,))
+    # Delete existing data for every date in this batch
+    dates_in_batch = set(r['upload_date'] for r in rows)
+    for d in dates_in_batch:
+        db.execute('DELETE FROM daily_costs WHERE upload_date = ?', (d,))
     db.executemany(
         '''INSERT INTO daily_costs
            (upload_date, resource, resource_id, resource_type, resource_group,
@@ -347,7 +352,7 @@ def commit():
           r['cost_usd'], r['currency'], r['type']) for r in rows]
     )
     db.commit()
-    return jsonify({'committed': len(rows)})
+    return jsonify({'committed': len(rows), 'dates': sorted(dates_in_batch)})
 
 
 @app.route('/available-dates')

@@ -53,6 +53,7 @@ uploadBtn.addEventListener('click', async () => {
   hide('commitCard');
   hide('successBanner');
   hide('replaceBanner');
+  hide('detectedDatesSummary');
   show('processing');
 
   const fd = new FormData();
@@ -66,15 +67,22 @@ uploadBtn.addEventListener('click', async () => {
     if (data.error) { alert(data.error); return; }
 
     state.sessionId = data.session_id;
-    state.uploadDate = data.upload_date;
     state.classifiedRows = data.classified;
     state.unclassifiedRows = data.unclassified;
 
-    if (data.existing_rows > 0) {
+    // Show replace warning for any dates that already have data
+    const replaceDates = Object.entries(data.existing_by_date || {})
+      .filter(([, cnt]) => cnt > 0).map(([d]) => d);
+    if (replaceDates.length > 0) {
       const warn = document.getElementById('replaceBanner');
-      warn.textContent = `⚠ ${data.existing_rows} existing rows for ${data.upload_date} will be replaced when you commit.`;
+      warn.textContent = `⚠ Existing data for ${replaceDates.join(', ')} will be replaced when you commit.`;
       warn.classList.remove('hidden');
     }
+
+    // Show detected dates summary
+    const datesSummary = document.getElementById('detectedDatesSummary');
+    datesSummary.textContent = `Detected ${data.dates.length} date(s) in file: ${data.dates.join(', ')}`;
+    datesSummary.classList.remove('hidden');
 
     renderAutoClassified(data.classified);
     if (data.unclassified.length > 0) {
