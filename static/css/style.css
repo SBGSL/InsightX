@@ -114,13 +114,22 @@ tfoot td { font-weight: 700; border-top: 2px solid #e5e7eb; padding: 10px 12px; 
 .type-select.unset { border-color: #f59e0b; background: #fffbeb; }
 
 /* ── Report controls ── */
-.report-controls { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 16px; }
+.report-controls { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .report-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 500; color: #374151; }
-.report-controls select {
+.report-controls input[type=date] {
   padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 7px;
-  font-size: 13px; outline: none;
+  font-size: 13px; outline: none; color: #111827;
 }
-.report-controls select:focus { border-color: #4f8ef7; }
+.report-controls input[type=date]:focus { border-color: #4f8ef7; }
+
+.quick-ranges { display: flex; gap: 6px; align-self: flex-end; }
+.qbtn {
+  padding: 8px 12px; border-radius: 7px; font-size: 12.5px; font-weight: 500;
+  border: 1.5px solid #d1d5db; background: #fff; color: #374151; cursor: pointer;
+  transition: all .15s;
+}
+.qbtn:hover { background: #f3f4f6; }
+.qbtn.active { background: #eff6ff; border-color: #4f8ef7; color: #1d4ed8; }
 
 #reportMeta { margin-bottom: 14px; }
 

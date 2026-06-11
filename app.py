@@ -367,22 +367,25 @@ def available_dates():
 
 @app.route('/report')
 def report():
-    days = int(request.args.get('days', 15))
-    cutoff = (date.today() - timedelta(days=days - 1)).isoformat()
-    db = get_db()
+    # Accept either date range or legacy 'days' param
+    from_date = request.args.get('from_date')
+    to_date   = request.args.get('to_date')
+    if not from_date or not to_date:
+        days = int(request.args.get('days', 15))
+        to_date   = date.today().isoformat()
+        from_date = (date.today() - timedelta(days=days - 1)).isoformat()
 
+    db = get_db()
     rows = db.execute(
         '''SELECT upload_date, resource, type, cost_inr
            FROM daily_costs
-           WHERE upload_date >= ?
+           WHERE upload_date >= ? AND upload_date <= ?
            ORDER BY upload_date''',
-        (cutoff,)
+        (from_date, to_date)
     ).fetchall()
 
-    # Dates available
     dates = sorted(set(r['upload_date'] for r in rows))
 
-    # Total compute per date
     compute_by_date = {}
     storage_by_customer_date = {}
 
@@ -394,6 +397,16 @@ def report():
             key = (r['resource'], d)
             storage_by_customer_date[key] = storage_by_customer_date.get(key, 0) + r['cost_inr']
 
+    # Daily totals for chart
+    daily_chart = []
+    for d in dates:
+        storage_total = sum(v for (_, dd), v in storage_by_customer_date.items() if dd == d)
+        daily_chart.append({
+            'date':    d,
+            'storage': round(storage_total, 2),
+            'compute': round(compute_by_date.get(d, 0), 2),
+        })
+
     # Aggregate per customer across all dates
     customers = sorted(set(k[0] for k in storage_by_customer_date.keys()))
     table = []
@@ -404,29 +417,30 @@ def report():
             s = storage_by_customer_date.get((customer, d), 0)
             total_storage += s
             total_compute = compute_by_date.get(d, 0)
-            # Total storage that day (all customers)
             total_storage_day = sum(
-                v for (c, dd), v in storage_by_customer_date.items() if dd == d
+                v for (_, dd), v in storage_by_customer_date.items() if dd == d
             )
             if total_storage_day > 0 and total_compute > 0:
                 total_compute_apportioned += total_compute * (s / total_storage_day)
         table.append({
-            'customer': customer,
+            'customer':    customer,
             'storage_cost': round(total_storage, 2),
             'compute_cost': round(total_compute_apportioned, 2),
-            'total_cost': round(total_storage + total_compute_apportioned, 2),
+            'total_cost':  round(total_storage + total_compute_apportioned, 2),
         })
 
     table.sort(key=lambda x: -x['total_cost'])
 
     return jsonify({
-        'dates': dates,
-        'days_requested': days,
-        'table': table,
+        'dates':       dates,
+        'from_date':   from_date,
+        'to_date':     to_date,
+        'daily_chart': daily_chart,
+        'table':       table,
         'totals': {
             'storage_cost': round(sum(r['storage_cost'] for r in table), 2),
             'compute_cost': round(sum(r['compute_cost'] for r in table), 2),
-            'total_cost': round(sum(r['total_cost'] for r in table), 2),
+            'total_cost':   round(sum(r['total_cost'] for r in table), 2),
         }
     })
 

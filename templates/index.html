@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>InsightX — Cost Segregation</title>
 <link rel="stylesheet" href="/static/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <div class="app">
@@ -132,19 +133,27 @@
       <!-- Report -->
       <div class="card">
         <div class="report-controls">
-          <label>
-            Period
-            <select id="daysSelect">
-              <option value="7">Last 7 days</option>
-              <option value="15" selected>Last 15 days</option>
-              <option value="30">Last 30 days</option>
-            </select>
+          <label>From
+            <input type="date" id="fromDate" />
           </label>
+          <label>To
+            <input type="date" id="toDate" />
+          </label>
+          <div class="quick-ranges">
+            <button class="qbtn" data-days="7">Last 7 days</button>
+            <button class="qbtn" data-days="15">Last 15 days</button>
+            <button class="qbtn" data-days="30">Last 30 days</button>
+          </div>
           <button class="btn btn-primary" id="loadReportBtn">Load Report</button>
           <button class="btn btn-outline" id="exportCsvBtn">Export CSV</button>
         </div>
 
         <div id="reportMeta" class="muted small"></div>
+
+        <!-- Stacked bar chart -->
+        <div id="chartWrap" style="display:none; margin-bottom:28px;">
+          <canvas id="costChart" height="100"></canvas>
+        </div>
 
         <div class="table-wrap" id="reportTableWrap" style="display:none">
           <table id="reportTable">

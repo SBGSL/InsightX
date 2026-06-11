@@ -275,26 +275,112 @@ async function loadAvailableDates() {
   }
 }
 
-/* ── Report ── */
+/* ── Report date controls ── */
+(function initDateControls() {
+  const today = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const fmt8601 = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+  const toInput   = document.getElementById('toDate');
+  const fromInput = document.getElementById('fromDate');
+  toInput.value   = fmt8601(today);
+  const d15 = new Date(today); d15.setDate(today.getDate() - 14);
+  fromInput.value = fmt8601(d15);
+
+  document.querySelectorAll('.qbtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.qbtn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const days = parseInt(btn.dataset.days);
+      const from = new Date(today); from.setDate(today.getDate() - days + 1);
+      fromInput.value = fmt8601(from);
+      toInput.value   = fmt8601(today);
+    });
+  });
+  // Mark default active
+  document.querySelector('.qbtn[data-days="15"]').classList.add('active');
+})();
+
+/* ── Chart instance ── */
+let _chart = null;
+
+function renderChart(dailyChart) {
+  const wrap = document.getElementById('chartWrap');
+  if (!dailyChart.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+
+  const labels   = dailyChart.map(d => d.date);
+  const storage  = dailyChart.map(d => d.storage);
+  const compute  = dailyChart.map(d => d.compute);
+
+  if (_chart) _chart.destroy();
+  _chart = new Chart(document.getElementById('costChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Storage Cost (INR)',
+          data: storage,
+          backgroundColor: 'rgba(251, 146, 60, 0.85)',
+          borderRadius: 4,
+        },
+        {
+          label: 'Compute Cost (INR)',
+          data: compute,
+          backgroundColor: 'rgba(79, 142, 247, 0.85)',
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ₹${ctx.parsed.y.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`,
+          }
+        }
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: {
+          stacked: true,
+          ticks: {
+            callback: v => '₹' + (v >= 1000 ? (v/1000).toFixed(1)+'k' : v),
+          }
+        },
+      },
+    },
+  });
+}
+
+/* ── Load report ── */
 document.getElementById('loadReportBtn').addEventListener('click', loadReport);
 
 async function loadReport() {
-  const days = document.getElementById('daysSelect').value;
-  const res  = await fetch(`/report?days=${days}`);
+  const from = document.getElementById('fromDate').value;
+  const to   = document.getElementById('toDate').value;
+  if (!from || !to) { alert('Please select a date range.'); return; }
+
+  const res  = await fetch(`/report?from_date=${from}&to_date=${to}`);
   const data = await res.json();
 
   const meta = document.getElementById('reportMeta');
-  if (data.dates.length === 0) {
+  if (!data.dates.length) {
     meta.textContent = '';
+    document.getElementById('chartWrap').style.display = 'none';
     document.getElementById('reportTableWrap').style.display = 'none';
     show('reportEmpty');
     return;
   }
-
-  meta.textContent = `Data from ${data.dates[0]} to ${data.dates[data.dates.length - 1]} (${data.dates.length} day${data.dates.length>1?'s':''})`;
-  document.getElementById('reportTableWrap').style.display = 'block';
   hide('reportEmpty');
+  meta.textContent = `${data.dates.length} day${data.dates.length>1?'s':''} of data  (${data.dates[0]} → ${data.dates[data.dates.length-1]})`;
 
+  renderChart(data.daily_chart);
+
+  document.getElementById('reportTableWrap').style.display = 'block';
   const tbody = document.querySelector('#reportTable tbody');
   tbody.innerHTML = data.table.map((r, i) => `
     <tr>
@@ -313,7 +399,6 @@ async function loadReport() {
     <td class="num">${fmt(data.totals.total_cost)}</td>
   </tr>`;
 
-  // Store for CSV export
   window._reportData = data;
 }
 
