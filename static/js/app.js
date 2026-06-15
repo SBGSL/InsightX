@@ -425,22 +425,18 @@ function _buildChart() {
 let _allCustomers    = [];
 let _selectedCustomers = new Set();
 
-function updateFilterLabel() {
-  const lbl = document.getElementById('customerFilterLabel');
-  if (!lbl) return;
-  if (_selectedCustomers.size === _allCustomers.length) lbl.textContent = 'All customers';
-  else if (_selectedCustomers.size === 0) lbl.textContent = 'No customers selected';
-  else lbl.textContent = `${_selectedCustomers.size} of ${_allCustomers.length} selected`;
+function updateFilterBtn() {
+  const btn = document.getElementById('customerFilterBtn');
+  if (!btn) return;
+  const isFiltered = _selectedCustomers.size < _allCustomers.length;
+  btn.classList.toggle('active', isFiltered);
+  btn.title = isFiltered ? `${_selectedCustomers.size} of ${_allCustomers.length} customers shown` : 'Filter customers';
 }
 
 function buildCustomerFilter(customers) {
   _allCustomers = customers;
   _selectedCustomers = new Set(customers);
-
-  const wrap = document.getElementById('customerFilterWrap');
-  if (!customers.length) { wrap.style.display = 'none'; return; }
-  wrap.style.display = 'block';
-  updateFilterLabel();
+  updateFilterBtn();
 
   const dropdown = document.getElementById('customerDropdown');
   dropdown.innerHTML = `
@@ -458,7 +454,7 @@ function buildCustomerFilter(customers) {
   dropdown.querySelector('#chkAllCustomers').addEventListener('change', e => {
     _selectedCustomers = e.target.checked ? new Set(_allCustomers) : new Set();
     dropdown.querySelectorAll('.cust-chk').forEach(chk => { chk.checked = e.target.checked; });
-    updateFilterLabel();
+    updateFilterBtn();
     renderReportTable();
   });
 
@@ -467,19 +463,21 @@ function buildCustomerFilter(customers) {
       if (chk.checked) _selectedCustomers.add(_allCustomers[i]);
       else             _selectedCustomers.delete(_allCustomers[i]);
       dropdown.querySelector('#chkAllCustomers').checked = (_selectedCustomers.size === _allCustomers.length);
-      updateFilterLabel();
+      updateFilterBtn();
       renderReportTable();
     });
   });
 }
 
-document.getElementById('customerFilterBtn').addEventListener('click', e => {
-  e.stopPropagation();
-  document.getElementById('customerDropdown').classList.toggle('hidden');
-});
 document.addEventListener('click', e => {
-  if (!e.target.closest('#customerFilterWrap')) {
-    document.getElementById('customerDropdown').classList.add('hidden');
+  const btn = document.getElementById('customerFilterBtn');
+  const dd  = document.getElementById('customerDropdown');
+  if (!btn || !dd) return;
+  if (btn.contains(e.target)) {
+    e.stopPropagation();
+    dd.classList.toggle('hidden');
+  } else if (!dd.contains(e.target)) {
+    dd.classList.add('hidden');
   }
 });
 
@@ -555,7 +553,6 @@ async function loadReport() {
     meta.textContent = '';
     document.getElementById('chartWrap').style.display = 'none';
     document.getElementById('reportTableWrap').style.display = 'none';
-    document.getElementById('customerFilterWrap').style.display = 'none';
     show('reportEmpty');
     return;
   }

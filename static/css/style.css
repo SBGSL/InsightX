@@ -170,12 +170,20 @@ tfoot td { font-weight: 700; border-top: 2px solid #e5e7eb; padding: 10px 12px; 
 .month-meta  { font-size: 12px; color: #6b7280; }
 .month-chips { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 4px; }
 
+/* Column filter button */
+.col-filter-btn {
+  background: none; border: none; cursor: pointer;
+  color: #9ca3af; font-size: 12px; padding: 1px 4px; border-radius: 4px;
+  line-height: 1; transition: color .15s, background .15s;
+}
+.col-filter-btn:hover, .col-filter-btn.active { color: #4f8ef7; background: #eff6ff; }
+
 /* Customer filter dropdown */
 .customer-dropdown {
-  position: absolute; top: calc(100% + 4px); left: 0;
+  position: absolute; top: calc(100% + 6px); left: 0;
   background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 100;
-  min-width: 260px; max-height: 320px; display: flex; flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0,0,0,.14); z-index: 200;
+  min-width: 240px; max-height: 300px; display: flex; flex-direction: column;
 }
 .cust-select-all { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; font-size: 13px; font-weight: 600; }
 .cust-list { overflow-y: auto; flex: 1; padding: 6px 0; }
