@@ -5,7 +5,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('view-' + btn.dataset.view).classList.add('active');
-    if (btn.dataset.view === 'report') loadReport();
+    if (btn.dataset.view === 'report') { loadAvailableDates(); }
     if (btn.dataset.view === 'history') loadHistory();
   });
 });
@@ -17,10 +17,6 @@ let state = {
   classifiedRows: [],
   unclassifiedRows: [],
 };
-
-/* ── Date default ── */
-const dateInput = document.getElementById('uploadDate');
-dateInput.value = new Date().toISOString().slice(0, 10);
 
 /* ── File input ── */
 const fileInput = document.getElementById('fileInput');
@@ -56,11 +52,12 @@ uploadBtn.addEventListener('click', async () => {
   hide('manualCard');
   hide('commitCard');
   hide('successBanner');
+  hide('replaceBanner');
+  hide('detectedDatesSummary');
   show('processing');
 
   const fd = new FormData();
   fd.append('file', file);
-  fd.append('upload_date', dateInput.value);
   fd.append('session_id', Date.now().toString());
 
   try {
@@ -70,9 +67,22 @@ uploadBtn.addEventListener('click', async () => {
     if (data.error) { alert(data.error); return; }
 
     state.sessionId = data.session_id;
-    state.uploadDate = data.upload_date;
     state.classifiedRows = data.classified;
     state.unclassifiedRows = data.unclassified;
+
+    // Show replace warning for any dates that already have data
+    const replaceDates = Object.entries(data.existing_by_date || {})
+      .filter(([, cnt]) => cnt > 0).map(([d]) => d);
+    if (replaceDates.length > 0) {
+      const warn = document.getElementById('replaceBanner');
+      warn.textContent = `⚠ Existing data for ${replaceDates.join(', ')} will be replaced when you commit.`;
+      warn.classList.remove('hidden');
+    }
+
+    // Show detected dates summary
+    const datesSummary = document.getElementById('detectedDatesSummary');
+    datesSummary.textContent = `Detected ${data.dates.length} date(s) in file: ${data.dates.join(', ')}`;
+    datesSummary.classList.remove('hidden');
 
     renderAutoClassified(data.classified);
     if (data.unclassified.length > 0) {
@@ -86,18 +96,52 @@ uploadBtn.addEventListener('click', async () => {
   }
 });
 
-/* ── Render auto-classified ── */
+/* ── Render classification summary (per date × per type) ── */
 function renderAutoClassified(rows) {
   if (!rows.length) return;
-  const tbody = document.querySelector('#autoTable tbody');
-  tbody.innerHTML = rows.map(r => `
-    <tr>
-      <td>${esc(r.resource)}</td>
-      <td>${esc(r.resource_type)}</td>
-      <td class="num">${fmt(r.cost_inr)}</td>
-      <td>${typeChip(r.type)}</td>
-    </tr>`).join('');
-  document.getElementById('autoCount').textContent = rows.length + ' resources';
+
+  // Group by date → type → {count, cost}
+  const byDate = {};
+  for (const r of rows) {
+    const d = r.upload_date;
+    const t = r.type;
+    if (!byDate[d]) byDate[d] = {};
+    if (!byDate[d][t]) byDate[d][t] = { count: 0, cost: 0 };
+    byDate[d][t].count++;
+    byDate[d][t].cost += r.cost_inr;
+  }
+
+  const TYPE_ORDER = [
+    'Customer Attributed (Compute)',
+    'Customer Specific (Storage,Read/write)',
+    'Platform',
+  ];
+
+  const html = Object.keys(byDate).sort().map(d => {
+    const types = byDate[d];
+    const dateTotal = Object.values(types).reduce((s, v) => s + v.cost, 0);
+    const dateCount = Object.values(types).reduce((s, v) => s + v.count, 0);
+    const rows = TYPE_ORDER.filter(t => types[t]).map(t => `
+      <tr>
+        <td>${typeChip(t)}</td>
+        <td class="num">${types[t].count}</td>
+        <td class="num">₹${fmt(types[t].cost)}</td>
+      </tr>`).join('');
+    return `
+      <div class="summary-date-block">
+        <div class="summary-date-header">
+          <span class="summary-date-label">${d}</span>
+          <span class="muted small">${dateCount} resources &nbsp;·&nbsp; ₹${fmt(dateTotal)}</span>
+        </div>
+        <table class="summary-table">
+          <thead><tr><th>Type</th><th>Resources</th><th>Cost (INR)</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  document.getElementById('summaryByDate').innerHTML = html;
+  document.getElementById('autoCount').textContent = rows.length + ' resources across ' + Object.keys(byDate).length + ' date(s)';
   show('autoClassifiedCard');
 }
 
@@ -136,16 +180,23 @@ document.getElementById('saveClassBtn').addEventListener('click', async () => {
 
   if (missing) { alert('Please classify all resources before saving.'); return; }
 
-  // 1. Save manual selections
-  const res = await fetch('/classify', {
+  // Build manually classified rows using same structure as auto rows
+  const manualRows = state.unclassifiedRows.map((r, i) => ({
+    ...r, type: selections[i].type
+  }));
+
+  // Single commit of ALL rows (auto + manual) for the date — one atomic replace
+  const allRows = [...state.classifiedRows, ...manualRows];
+
+  // Save learned type mappings to DB (for future auto-classification)
+  await fetch('/classify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: state.sessionId, selections }),
   });
-  const d = await res.json();
 
-  // 2. Commit auto-classified rows
-  await commitRows(state.classifiedRows);
+  const ok = await commitRows(allRows);
+  if (!ok) return;
 
   show('successBanner');
   hide('manualCard');
@@ -156,7 +207,8 @@ document.getElementById('saveClassBtn').addEventListener('click', async () => {
 
 /* ── Commit auto-only ── */
 document.getElementById('commitOnlyBtn').addEventListener('click', async () => {
-  await commitRows(state.classifiedRows);
+  const ok = await commitRows(state.classifiedRows);
+  if (!ok) return;
   show('successBanner');
   hide('commitCard');
   hide('autoClassifiedCard');
@@ -164,12 +216,24 @@ document.getElementById('commitOnlyBtn').addEventListener('click', async () => {
 });
 
 async function commitRows(rows) {
-  if (!rows.length) return;
-  await fetch('/commit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ rows }),
-  });
+  if (!rows.length) { alert('No rows to commit.'); return false; }
+  try {
+    const res = await fetch('/commit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert('Commit failed: ' + (data.error || res.statusText));
+      return false;
+    }
+    console.log('Committed', data.committed, 'rows for', rows[0]?.upload_date);
+    return true;
+  } catch (e) {
+    alert('Commit failed: ' + e.message);
+    return false;
+  }
 }
 
 function resetUpload() {
@@ -180,26 +244,143 @@ function resetUpload() {
   state = { sessionId: null, uploadDate: null, classifiedRows: [], unclassifiedRows: [] };
 }
 
-/* ── Report ── */
+/* ── Available Dates ── */
+async function loadAvailableDates() {
+  const chips = document.getElementById('dateChips');
+  const empty = document.getElementById('datesEmpty');
+  const count = document.getElementById('datesCount');
+  chips.innerHTML = '<span class="muted small">Loading…</span>';
+
+  try {
+    const res  = await fetch('/available-dates');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    if (!data.length) {
+      chips.innerHTML = '';
+      count.textContent = '0 dates';
+      show('datesEmpty');
+      return;
+    }
+    hide('datesEmpty');
+    count.textContent = data.length + ' date' + (data.length > 1 ? 's' : '');
+    chips.innerHTML = data.map(d => `
+      <div class="date-chip">
+        <span class="date-chip-date">${d.upload_date}</span>
+        <span class="date-chip-rows">${d.rows} resources</span>
+        <span class="date-chip-cost">₹${fmt(d.total)}</span>
+      </div>`).join('');
+  } catch (e) {
+    chips.innerHTML = `<span class="muted small">Error loading dates: ${e.message}</span>`;
+  }
+}
+
+/* ── Report date controls ── */
+(function initDateControls() {
+  const today = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const fmt8601 = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+  const toInput   = document.getElementById('toDate');
+  const fromInput = document.getElementById('fromDate');
+  toInput.value   = fmt8601(today);
+  const d15 = new Date(today); d15.setDate(today.getDate() - 14);
+  fromInput.value = fmt8601(d15);
+
+  document.querySelectorAll('.qbtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.qbtn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const days = parseInt(btn.dataset.days);
+      const from = new Date(today); from.setDate(today.getDate() - days + 1);
+      fromInput.value = fmt8601(from);
+      toInput.value   = fmt8601(today);
+    });
+  });
+  // Mark default active
+  document.querySelector('.qbtn[data-days="15"]').classList.add('active');
+})();
+
+/* ── Chart instance ── */
+let _chart = null;
+
+function renderChart(dailyChart) {
+  const wrap = document.getElementById('chartWrap');
+  if (!dailyChart.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+
+  const labels   = dailyChart.map(d => d.date);
+  const storage  = dailyChart.map(d => d.storage);
+  const compute  = dailyChart.map(d => d.compute);
+
+  if (_chart) _chart.destroy();
+  _chart = new Chart(document.getElementById('costChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Storage Cost (INR)',
+          data: storage,
+          backgroundColor: 'rgba(251, 146, 60, 0.85)',
+          borderRadius: 4,
+        },
+        {
+          label: 'Compute Cost (INR)',
+          data: compute,
+          backgroundColor: 'rgba(79, 142, 247, 0.85)',
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ₹${ctx.parsed.y.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`,
+          }
+        }
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: {
+          stacked: true,
+          ticks: {
+            callback: v => '₹' + (v >= 1000 ? (v/1000).toFixed(1)+'k' : v),
+          }
+        },
+      },
+    },
+  });
+}
+
+/* ── Load report ── */
 document.getElementById('loadReportBtn').addEventListener('click', loadReport);
 
 async function loadReport() {
-  const days = document.getElementById('daysSelect').value;
-  const res  = await fetch(`/report?days=${days}`);
+  const from = document.getElementById('fromDate').value;
+  const to   = document.getElementById('toDate').value;
+  if (!from || !to) { alert('Please select a date range.'); return; }
+
+  const res  = await fetch(`/report?from_date=${from}&to_date=${to}`);
   const data = await res.json();
 
   const meta = document.getElementById('reportMeta');
-  if (data.dates.length === 0) {
+  if (!data.dates.length) {
     meta.textContent = '';
-    hide('reportTableWrap');
+    document.getElementById('chartWrap').style.display = 'none';
+    document.getElementById('reportTableWrap').style.display = 'none';
     show('reportEmpty');
     return;
   }
-
-  meta.textContent = `Data from ${data.dates[0]} to ${data.dates[data.dates.length - 1]} (${data.dates.length} day${data.dates.length>1?'s':''})`;
-  show('reportTableWrap');
   hide('reportEmpty');
+  meta.textContent = `${data.dates.length} day${data.dates.length>1?'s':''} of data  (${data.dates[0]} → ${data.dates[data.dates.length-1]})`;
 
+  renderChart(data.daily_chart);
+
+  document.getElementById('reportTableWrap').style.display = 'block';
   const tbody = document.querySelector('#reportTable tbody');
   tbody.innerHTML = data.table.map((r, i) => `
     <tr>
@@ -218,7 +399,6 @@ async function loadReport() {
     <td class="num">${fmt(data.totals.total_cost)}</td>
   </tr>`;
 
-  // Store for CSV export
   window._reportData = data;
 }
 
