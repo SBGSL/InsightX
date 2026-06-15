@@ -43,6 +43,26 @@ dropZone.addEventListener('drop', e => {
   setFile(e.dataTransfer.files[0]);
 });
 
+/* ── Progress helpers ── */
+function setStep(stepId, state) {
+  const icon = document.querySelector(`#${stepId} .step-icon`);
+  if (!icon) return;
+  icon.className = 'step-icon ' + (state === 'active' ? 'step-active' : state === 'done' ? 'step-done' : 'step-waiting');
+  if (state === 'done') icon.textContent = '✓';
+}
+function setProgress(pct, label) {
+  document.getElementById('progressBarFill').style.width = pct + '%';
+  document.getElementById('progressBarLabel').textContent = label;
+}
+function resetProgress() {
+  ['step-upload','step-parse','step-classify','step-done'].forEach((s,i) => setStep(s, 'waiting'));
+  document.querySelector('#step-upload .step-icon').textContent = '1';
+  document.querySelector('#step-parse .step-icon').textContent  = '2';
+  document.querySelector('#step-classify .step-icon').textContent = '3';
+  document.querySelector('#step-done .step-icon').textContent   = '4';
+  setProgress(0, '');
+}
+
 /* ── Upload ── */
 uploadBtn.addEventListener('click', async () => {
   const file = uploadBtn._file;
@@ -54,15 +74,30 @@ uploadBtn.addEventListener('click', async () => {
   hide('successBanner');
   hide('replaceBanner');
   hide('detectedDatesSummary');
+  resetProgress();
   show('processing');
+
+  setStep('step-upload', 'active');
+  setProgress(10, 'Uploading file…');
 
   const fd = new FormData();
   fd.append('file', file);
   fd.append('session_id', Date.now().toString());
 
+  // Simulate intermediate steps while waiting for server
+  setTimeout(() => { setStep('step-upload','done'); setStep('step-parse','active'); setProgress(35,'Parsing Excel…'); }, 800);
+  setTimeout(() => { setStep('step-parse','done'); setStep('step-classify','active'); setProgress(65,'Classifying resources…'); }, 1800);
+
   try {
     const res = await fetch('/upload', { method: 'POST', body: fd });
     const data = await res.json();
+
+    setStep('step-classify','done'); setStep('step-done','active');
+    setProgress(95, 'Finalising…');
+    await new Promise(r => setTimeout(r, 400));
+    setStep('step-done','done'); setProgress(100, 'Complete!');
+    await new Promise(r => setTimeout(r, 300));
+
     hide('processing');
     if (data.error) { alert(data.error); return; }
 
@@ -217,6 +252,14 @@ document.getElementById('commitOnlyBtn').addEventListener('click', async () => {
 
 async function commitRows(rows) {
   if (!rows.length) { alert('No rows to commit.'); return false; }
+
+  show('processing');
+  resetProgress();
+  setStep('step-upload', 'done');
+  setStep('step-parse', 'done');
+  setStep('step-classify', 'active');
+  setProgress(50, 'Saving to database…');
+
   try {
     const res = await fetch('/commit', {
       method: 'POST',
@@ -224,13 +267,19 @@ async function commitRows(rows) {
       body: JSON.stringify({ rows }),
     });
     const data = await res.json();
+
+    setStep('step-classify','done'); setStep('step-done','active');
+    setProgress(100, 'Saved!');
+    await new Promise(r => setTimeout(r, 500));
+    hide('processing');
+
     if (!res.ok) {
       alert('Commit failed: ' + (data.error || res.statusText));
       return false;
     }
-    console.log('Committed', data.committed, 'rows for', rows[0]?.upload_date);
     return true;
   } catch (e) {
+    hide('processing');
     alert('Commit failed: ' + e.message);
     return false;
   }
