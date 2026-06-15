@@ -248,6 +248,13 @@ def debug():
 
 @app.route('/upload', methods=['POST'])
 def upload():
+    try:
+        return _upload()
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
+
+def _upload():
     file       = request.files.get('file')
     session_id = request.form.get('session_id') or datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
 
@@ -294,6 +301,13 @@ def upload():
 
     if unclassified:
         cur.execute('DELETE FROM pending_classifications WHERE session_id = %s', (session_id,))
+        # Use a deduped list — same resource may appear on multiple dates but PK is (session_id, resource)
+        seen = set()
+        deduped = []
+        for u in unclassified:
+            if u['resource'] not in seen:
+                seen.add(u['resource'])
+                deduped.append(u)
         psycopg2.extras.execute_values(cur,
             '''INSERT INTO pending_classifications
                (session_id, resource, resource_id, resource_type, resource_group,
@@ -302,7 +316,7 @@ def upload():
                ON CONFLICT (session_id, resource) DO NOTHING''',
             [(session_id, u['resource'], u['resource_id'], u['resource_type'],
               u['resource_group'], u['subscription_name'], u['cost_inr'],
-              u['cost_usd'], u['currency'], u['upload_date']) for u in unclassified]
+              u['cost_usd'], u['currency'], u['upload_date']) for u in deduped]
         )
         db.commit()
 
