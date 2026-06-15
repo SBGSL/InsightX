@@ -475,6 +475,12 @@ document.addEventListener('click', e => {
   if (!btn || !dd) return;
   if (btn.contains(e.target)) {
     e.stopPropagation();
+    const isHidden = dd.classList.contains('hidden');
+    if (isHidden) {
+      const rect = btn.getBoundingClientRect();
+      dd.style.top  = (rect.bottom + 6) + 'px';
+      dd.style.left = rect.left + 'px';
+    }
     dd.classList.toggle('hidden');
   } else if (!dd.contains(e.target)) {
     dd.classList.add('hidden');

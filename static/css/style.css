@@ -180,10 +180,10 @@ tfoot td { font-weight: 700; border-top: 2px solid #e5e7eb; padding: 10px 12px; 
 
 /* Customer filter dropdown */
 .customer-dropdown {
-  position: absolute; top: calc(100% + 6px); left: 0;
+  position: fixed;
   background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.14); z-index: 200;
-  min-width: 240px; max-height: 300px; display: flex; flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0,0,0,.14); z-index: 9999;
+  min-width: 260px; max-height: 340px; display: flex; flex-direction: column;
 }
 .cust-select-all { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; font-size: 13px; font-weight: 600; }
 .cust-list { overflow-y: auto; flex: 1; padding: 6px 0; }
