@@ -425,6 +425,33 @@ function _buildChart() {
 let _allCustomers      = [];
 let _selectedCustomers = new Set();
 
+function _custFilterLabel() {
+  const el = document.getElementById('custFilterCount');
+  if (!el) return;
+  el.textContent = _selectedCustomers.size === _allCustomers.length
+    ? `All (${_allCustomers.length})`
+    : `${_selectedCustomers.size} / ${_allCustomers.length} selected`;
+}
+
+function _renderCustList(filter) {
+  const list = document.getElementById('custCheckList');
+  const q    = (filter || '').toLowerCase();
+  const visible = _allCustomers.filter(c => !q || c.toLowerCase().includes(q));
+  list.innerHTML = visible.map(c => `
+    <label class="cust-dd-item">
+      <input type="checkbox" class="cust-chk" ${_selectedCustomers.has(c) ? 'checked' : ''}>
+      <span>${esc(c)}</span>
+    </label>`).join('');
+  list.querySelectorAll('.cust-chk').forEach((chk, i) => {
+    chk.addEventListener('change', () => {
+      if (chk.checked) _selectedCustomers.add(visible[i]);
+      else             _selectedCustomers.delete(visible[i]);
+      _custFilterLabel();
+      renderReportTable();
+    });
+  });
+}
+
 function buildCustomerFilter(customers) {
   _allCustomers      = customers;
   _selectedCustomers = new Set(customers);
@@ -432,44 +459,37 @@ function buildCustomerFilter(customers) {
   const panel = document.getElementById('customerFilterPanel');
   if (!customers.length) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
+  _custFilterLabel();
+  _renderCustList();
 
-  _renderCustChips();
-
-  document.getElementById('custSelectAll').onclick = () => {
+  document.getElementById('custSelectAll').onclick = e => {
+    e.stopPropagation();
     _selectedCustomers = new Set(_allCustomers);
-    _renderCustChips();
-    renderReportTable();
+    _renderCustList(document.getElementById('custSearch').value);
+    _custFilterLabel(); renderReportTable();
   };
-  document.getElementById('custClearAll').onclick = () => {
+  document.getElementById('custClearAll').onclick = e => {
+    e.stopPropagation();
     _selectedCustomers = new Set();
-    _renderCustChips();
-    renderReportTable();
+    _renderCustList(document.getElementById('custSearch').value);
+    _custFilterLabel(); renderReportTable();
   };
+  document.getElementById('custSearch').oninput = e => _renderCustList(e.target.value);
 }
 
-function _renderCustChips() {
-  const list = document.getElementById('custChipList');
-  list.innerHTML = _allCustomers.map((c, i) => {
-    const sel = _selectedCustomers.has(c);
-    return `<span class="cust-chip ${sel ? 'cust-chip-on' : 'cust-chip-off'}" data-idx="${i}">${esc(c)}</span>`;
-  }).join('');
-  list.querySelectorAll('.cust-chip').forEach((chip, i) => {
-    chip.addEventListener('click', () => {
-      const c = _allCustomers[i];
-      if (_selectedCustomers.has(c)) _selectedCustomers.delete(c);
-      else                           _selectedCustomers.add(c);
-      chip.classList.toggle('cust-chip-on');
-      chip.classList.toggle('cust-chip-off');
-      document.getElementById('custFilterCount').textContent =
-        _selectedCustomers.size === _allCustomers.length
-          ? 'All' : `${_selectedCustomers.size} / ${_allCustomers.length}`;
-      renderReportTable();
-    });
-  });
-  document.getElementById('custFilterCount').textContent =
-    _selectedCustomers.size === _allCustomers.length
-      ? 'All' : `${_selectedCustomers.size} / ${_allCustomers.length}`;
-}
+document.addEventListener('click', e => {
+  const btn = document.getElementById('custFilterBtn');
+  const dd  = document.getElementById('custDropdown');
+  if (!btn || !dd) return;
+  if (btn.contains(e.target)) {
+    e.stopPropagation();
+    const opening = dd.classList.contains('hidden');
+    dd.classList.toggle('hidden');
+    if (opening) { document.getElementById('custSearch').value = ''; _renderCustList(); document.getElementById('custSearch').focus(); }
+  } else if (!dd.contains(e.target)) {
+    dd.classList.add('hidden');
+  }
+});
 
 function renderReportTable() {
   const data = window._reportData;

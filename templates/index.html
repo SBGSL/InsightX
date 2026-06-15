@@ -185,15 +185,26 @@
           <canvas id="costChart" height="100"></canvas>
         </div>
 
-        <!-- Customer filter panel — visible after report loads -->
-        <div id="customerFilterPanel" style="display:none; margin-bottom:16px;">
-          <div class="cust-panel-header">
-            <span class="cust-panel-title">Filter Customers</span>
-            <span id="custFilterCount" class="badge badge-green"></span>
-            <button class="btn btn-outline" id="custSelectAll" style="padding:4px 10px;font-size:12px;">Select All</button>
-            <button class="btn btn-outline" id="custClearAll" style="padding:4px 10px;font-size:12px;">Clear All</button>
+        <!-- Customer filter — compact dropdown -->
+        <div id="customerFilterPanel" style="display:none; margin-bottom:16px; position:relative;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:12.5px;font-weight:500;color:#374151;white-space:nowrap;">Customers:</span>
+            <button id="custFilterBtn" class="btn btn-outline" style="display:flex;align-items:center;gap:8px;min-width:180px;">
+              <span id="custFilterCount">All</span>
+              <span style="margin-left:auto;font-size:11px;color:#9ca3af;">▾</span>
+            </button>
           </div>
-          <div id="custChipList" class="cust-chip-list"></div>
+          <!-- dropdown panel -->
+          <div id="custDropdown" class="cust-dropdown hidden">
+            <div class="cust-dd-search">
+              <input id="custSearch" type="text" placeholder="Search customers…" autocomplete="off"/>
+            </div>
+            <div class="cust-dd-actions">
+              <button id="custSelectAll" class="cust-dd-act">Select All</button>
+              <button id="custClearAll"  class="cust-dd-act">Clear All</button>
+            </div>
+            <div id="custCheckList" class="cust-dd-list"></div>
+          </div>
         </div>
 
         <div class="table-wrap" id="reportTableWrap" style="display:none">

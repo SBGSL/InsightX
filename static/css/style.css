@@ -170,17 +170,33 @@ tfoot td { font-weight: 700; border-top: 2px solid #e5e7eb; padding: 10px 12px; 
 .month-meta  { font-size: 12px; color: #6b7280; }
 .month-chips { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 4px; }
 
-/* Customer filter chip panel */
-.cust-panel-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.cust-panel-title  { font-size: 12.5px; font-weight: 600; color: #374151; }
-.cust-chip-list    { display: flex; flex-wrap: wrap; gap: 6px; }
-.cust-chip {
-  padding: 5px 12px; border-radius: 20px; font-size: 12.5px;
-  cursor: pointer; user-select: none; transition: all .15s;
-  border: 1.5px solid transparent;
+/* Customer filter compact dropdown */
+.cust-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.13); z-index: 500;
+  width: 260px; display: flex; flex-direction: column;
 }
-.cust-chip-on  { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
-.cust-chip-off { background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb; }
+.cust-dd-search  { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }
+.cust-dd-search input {
+  width: 100%; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px;
+  font-size: 13px; outline: none;
+}
+.cust-dd-search input:focus { border-color: #4f8ef7; }
+.cust-dd-actions { display: flex; gap: 6px; padding: 6px 12px; border-bottom: 1px solid #f3f4f6; }
+.cust-dd-act {
+  flex: 1; padding: 4px 0; font-size: 12px; font-weight: 500;
+  background: none; border: 1px solid #d1d5db; border-radius: 5px;
+  cursor: pointer; color: #374151;
+}
+.cust-dd-act:hover { background: #f9fafb; }
+.cust-dd-list { max-height: 240px; overflow-y: auto; padding: 4px 0; }
+.cust-dd-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px; font-size: 13px; cursor: pointer;
+}
+.cust-dd-item:hover { background: #f9fafb; }
+.cust-dd-item input { cursor: pointer; accent-color: #4f8ef7; flex-shrink: 0; }
 
 /* Other customers row in table */
 tr.other-row td { color: #6b7280; font-style: italic; background: #fafafa; }
