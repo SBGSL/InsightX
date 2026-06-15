@@ -229,6 +229,23 @@ def index():
     return render_template('index.html', types=TYPES)
 
 
+@app.route('/debug')
+def debug():
+    info = {'database_url_set': bool(DATABASE_URL)}
+    try:
+        db = get_db()
+        cur = get_cur(db)
+        cur.execute('SELECT COUNT(*) as cnt FROM daily_costs')
+        info['daily_costs_count'] = cur.fetchone()['cnt']
+        cur.execute('SELECT COUNT(*) as cnt FROM resource_type_map')
+        info['resource_type_map_count'] = cur.fetchone()['cnt']
+        cur.close()
+        info['db_ok'] = True
+    except Exception as e:
+        info['db_error'] = str(e)
+    return jsonify(info)
+
+
 @app.route('/upload', methods=['POST'])
 def upload():
     file       = request.files.get('file')
