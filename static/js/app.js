@@ -422,63 +422,64 @@ function _buildChart() {
 });
 
 /* ── Customer filter ── */
+let _allCustomers    = [];
 let _selectedCustomers = new Set();
 
+function updateFilterLabel() {
+  const lbl = document.getElementById('customerFilterLabel');
+  if (!lbl) return;
+  if (_selectedCustomers.size === _allCustomers.length) lbl.textContent = 'All customers';
+  else if (_selectedCustomers.size === 0) lbl.textContent = 'No customers selected';
+  else lbl.textContent = `${_selectedCustomers.size} of ${_allCustomers.length} selected`;
+}
+
 function buildCustomerFilter(customers) {
+  _allCustomers = customers;
+  _selectedCustomers = new Set(customers);
+
   const wrap = document.getElementById('customerFilterWrap');
   if (!customers.length) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'block';
-  _selectedCustomers = new Set(customers);
+  updateFilterLabel();
 
   const dropdown = document.getElementById('customerDropdown');
   dropdown.innerHTML = `
     <div class="cust-select-all">
-      <label><input type="checkbox" id="chkAllCustomers" checked> Select All</label>
+      <label><input type="checkbox" id="chkAllCustomers" checked> Select All (${customers.length})</label>
     </div>
     <div class="cust-list">
-      ${customers.map(c => `
+      ${customers.map((c, i) => `
         <label class="cust-item">
-          <input type="checkbox" class="cust-chk" value="${esc(c)}" checked>
+          <input type="checkbox" class="cust-chk" data-idx="${i}" checked>
           ${esc(c)}
         </label>`).join('')}
     </div>`;
 
-  function updateFilterLabel() {
-    const lbl = document.getElementById('customerFilterLabel');
-    if (_selectedCustomers.size === customers.length) lbl.textContent = 'All customers';
-    else if (_selectedCustomers.size === 0) lbl.textContent = 'No customers selected';
-    else lbl.textContent = `${_selectedCustomers.size} of ${customers.length} selected`;
-  }
-
-  document.getElementById('chkAllCustomers').addEventListener('change', e => {
-    document.querySelectorAll('.cust-chk').forEach(chk => {
-      chk.checked = e.target.checked;
-      if (e.target.checked) _selectedCustomers.add(chk.value);
-      else _selectedCustomers.delete(chk.value);
-    });
+  dropdown.querySelector('#chkAllCustomers').addEventListener('change', e => {
+    _selectedCustomers = e.target.checked ? new Set(_allCustomers) : new Set();
+    dropdown.querySelectorAll('.cust-chk').forEach(chk => { chk.checked = e.target.checked; });
     updateFilterLabel();
     renderReportTable();
   });
 
-  document.querySelectorAll('.cust-chk').forEach(chk => {
-    chk.addEventListener('change', e => {
-      if (e.target.checked) _selectedCustomers.add(e.target.value);
-      else _selectedCustomers.delete(e.target.value);
-      const allChk = document.getElementById('chkAllCustomers');
-      allChk.checked = _selectedCustomers.size === customers.length;
+  dropdown.querySelectorAll('.cust-chk').forEach((chk, i) => {
+    chk.addEventListener('change', () => {
+      if (chk.checked) _selectedCustomers.add(_allCustomers[i]);
+      else             _selectedCustomers.delete(_allCustomers[i]);
+      dropdown.querySelector('#chkAllCustomers').checked = (_selectedCustomers.size === _allCustomers.length);
       updateFilterLabel();
       renderReportTable();
     });
   });
 }
 
-document.getElementById('customerFilterBtn')?.addEventListener('click', () => {
-  const dd = document.getElementById('customerDropdown');
-  dd.classList.toggle('hidden');
+document.getElementById('customerFilterBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('customerDropdown').classList.toggle('hidden');
 });
 document.addEventListener('click', e => {
   if (!e.target.closest('#customerFilterWrap')) {
-    document.getElementById('customerDropdown')?.classList.add('hidden');
+    document.getElementById('customerDropdown').classList.add('hidden');
   }
 });
 

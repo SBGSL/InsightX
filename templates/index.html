@@ -155,18 +155,6 @@
         <div id="datesEmpty" class="empty-state hidden">No data uploaded yet. Go to Upload tab to add data.</div>
       </div>
 
-      <!-- Customer filter (shown after report loads) -->
-      <div id="customerFilterWrap" style="display:none; position:relative; margin-bottom:0;">
-        <div class="report-controls" style="margin-bottom:0;">
-          <label style="font-size:12.5px;font-weight:500;color:#374151;">Filter Customers</label>
-          <button id="customerFilterBtn" class="btn btn-outline" style="min-width:200px;text-align:left;display:flex;justify-content:space-between;align-items:center;">
-            <span id="customerFilterLabel">All customers</span>
-            <span>▾</span>
-          </button>
-        </div>
-        <div id="customerDropdown" class="customer-dropdown hidden"></div>
-      </div>
-
       <!-- Report -->
       <div class="card">
         <div class="report-controls">
@@ -183,6 +171,18 @@
           </div>
           <button class="btn btn-primary" id="loadReportBtn">Load Report</button>
           <button class="btn btn-outline" id="exportCsvBtn">Export CSV</button>
+        </div>
+
+        <!-- Customer filter — shown after report loads -->
+        <div id="customerFilterWrap" style="display:none; position:relative; margin-bottom:16px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:12.5px;font-weight:500;color:#374151;">Filter Customers:</span>
+            <button id="customerFilterBtn" class="btn btn-outline" style="min-width:200px;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+              <span id="customerFilterLabel">All customers</span>
+              <span style="font-size:11px;">▾</span>
+            </button>
+          </div>
+          <div id="customerDropdown" class="customer-dropdown hidden"></div>
         </div>
 
         <div id="reportMeta" class="muted small"></div>
