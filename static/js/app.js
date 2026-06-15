@@ -352,36 +352,32 @@ async function loadAvailableDates() {
 
 /* ── Chart instance ── */
 let _chart = null;
+let _lastDailyChart = [];
 
 function renderChart(dailyChart) {
+  _lastDailyChart = dailyChart;
   const wrap = document.getElementById('chartWrap');
   if (!dailyChart.length) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'block';
+  _buildChart();
+}
+
+function _buildChart() {
+  const dailyChart = _lastDailyChart;
+  const showA = document.getElementById('chkStorage').checked;
+  const showB = document.getElementById('chkCompute').checked;
+  const showC = document.getElementById('chkPlatform').checked;
 
   const labels   = dailyChart.map(d => d.date);
-  const storage  = dailyChart.map(d => d.storage);
-  const compute  = dailyChart.map(d => d.compute);
+  const datasets = [];
+  if (showA) datasets.push({ label: 'A — Storage (INR)',  data: dailyChart.map(d => d.storage),  backgroundColor: 'rgba(251,146,60,0.85)',  borderRadius: 4 });
+  if (showB) datasets.push({ label: 'B — Compute (INR)',  data: dailyChart.map(d => d.compute),  backgroundColor: 'rgba(79,142,247,0.85)',  borderRadius: 4 });
+  if (showC) datasets.push({ label: 'C — Platform (INR)', data: dailyChart.map(d => d.platform), backgroundColor: 'rgba(139,92,246,0.85)', borderRadius: 4 });
 
   if (_chart) _chart.destroy();
   _chart = new Chart(document.getElementById('costChart'), {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Storage Cost (INR)',
-          data: storage,
-          backgroundColor: 'rgba(251, 146, 60, 0.85)',
-          borderRadius: 4,
-        },
-        {
-          label: 'Compute Cost (INR)',
-          data: compute,
-          backgroundColor: 'rgba(79, 142, 247, 0.85)',
-          borderRadius: 4,
-        },
-      ],
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
       plugins: {
@@ -394,16 +390,15 @@ function renderChart(dailyChart) {
       },
       scales: {
         x: { stacked: true, grid: { display: false } },
-        y: {
-          stacked: true,
-          ticks: {
-            callback: v => '₹' + (v >= 1000 ? (v/1000).toFixed(1)+'k' : v),
-          }
-        },
+        y: { stacked: true, ticks: { callback: v => '₹' + (v >= 1000 ? (v/1000).toFixed(1)+'k' : v) } },
       },
     },
   });
 }
+
+['chkStorage','chkCompute','chkPlatform'].forEach(id => {
+  document.getElementById(id)?.addEventListener('change', () => { if (_lastDailyChart.length) _buildChart(); });
+});
 
 /* ── Load report ── */
 document.getElementById('loadReportBtn').addEventListener('click', loadReport);
@@ -436,16 +431,25 @@ async function loadReport() {
       <td>${i + 1}</td>
       <td><strong>${esc(r.customer)}</strong></td>
       <td class="num">${fmt(r.storage_cost)}</td>
+      <td class="num pct">${r.pct_storage}%</td>
       <td class="num">${fmt(r.compute_cost)}</td>
+      <td class="num pct">${r.pct_compute}%</td>
+      <td class="num">${fmt(r.platform_cost)}</td>
+      <td class="num pct">${r.pct_platform}%</td>
       <td class="num"><strong>${fmt(r.total_cost)}</strong></td>
     </tr>`).join('');
 
+  const t = data.totals;
   const tfoot = document.querySelector('#reportTable tfoot');
   tfoot.innerHTML = `<tr>
     <td colspan="2">TOTAL</td>
-    <td class="num">${fmt(data.totals.storage_cost)}</td>
-    <td class="num">${fmt(data.totals.compute_cost)}</td>
-    <td class="num">${fmt(data.totals.total_cost)}</td>
+    <td class="num">${fmt(t.storage_cost)}</td>
+    <td class="num pct">${t.pct_storage}%</td>
+    <td class="num">${fmt(t.compute_cost)}</td>
+    <td class="num pct">${t.pct_compute}%</td>
+    <td class="num">${fmt(t.platform_cost)}</td>
+    <td class="num pct">${t.pct_platform}%</td>
+    <td class="num">${fmt(t.total_cost)}</td>
   </tr>`;
 
   window._reportData = data;
@@ -456,9 +460,9 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
   if (!window._reportData) { alert('Load report first.'); return; }
   const d = window._reportData;
   const rows = [
-    ['Customer Name', 'A - Storage Cost (INR)', 'B - Compute Cost Apportioned (INR)', 'Total Cost (INR)'],
-    ...d.table.map(r => [r.customer, r.storage_cost, r.compute_cost, r.total_cost]),
-    ['TOTAL', d.totals.storage_cost, d.totals.compute_cost, d.totals.total_cost],
+    ['Customer Name', 'A - Storage Cost (INR)', 'A %', 'B - Compute Cost (INR)', 'B %', 'C - Platform Cost (INR)', 'C %', 'D - Total Cost (INR)'],
+    ...d.table.map(r => [r.customer, r.storage_cost, r.pct_storage+'%', r.compute_cost, r.pct_compute+'%', r.platform_cost, r.pct_platform+'%', r.total_cost]),
+    ['TOTAL', d.totals.storage_cost, d.totals.pct_storage+'%', d.totals.compute_cost, d.totals.pct_compute+'%', d.totals.platform_cost, d.totals.pct_platform+'%', d.totals.total_cost],
   ];
   const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });

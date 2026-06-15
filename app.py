@@ -425,13 +425,16 @@ def report():
 
     dates = sorted(set(r['upload_date'] for r in rows))
 
-    compute_by_date         = {}
+    compute_by_date          = {}
+    platform_by_date         = {}
     storage_by_customer_date = {}
 
     for r in rows:
         d = r['upload_date']
         if r['type'] == 'Customer Attributed (Compute)':
             compute_by_date[d] = compute_by_date.get(d, 0) + r['cost_inr']
+        elif r['type'] == 'Platform':
+            platform_by_date[d] = platform_by_date.get(d, 0) + r['cost_inr']
         elif r['type'] == 'Customer Specific (Storage,Read/write)':
             k = (r['resource'], d)
             storage_by_customer_date[k] = storage_by_customer_date.get(k, 0) + r['cost_inr']
@@ -440,33 +443,50 @@ def report():
     for d in dates:
         storage_total = sum(v for (_, dd), v in storage_by_customer_date.items() if dd == d)
         daily_chart.append({
-            'date':    d,
-            'storage': round(storage_total, 2),
-            'compute': round(compute_by_date.get(d, 0), 2),
+            'date':     d,
+            'storage':  round(storage_total, 2),
+            'compute':  round(compute_by_date.get(d, 0), 2),
+            'platform': round(platform_by_date.get(d, 0), 2),
         })
 
     customers = sorted(set(k[0] for k in storage_by_customer_date.keys()))
     table = []
     for customer in customers:
-        total_storage = 0
-        total_compute_apportioned = 0
+        total_storage  = 0
+        total_compute  = 0
+        total_platform = 0
         for d in dates:
-            s             = storage_by_customer_date.get((customer, d), 0)
+            s = storage_by_customer_date.get((customer, d), 0)
             total_storage += s
-            total_compute = compute_by_date.get(d, 0)
-            total_storage_day = sum(
-                v for (_, dd), v in storage_by_customer_date.items() if dd == d
-            )
-            if total_storage_day > 0 and total_compute > 0:
-                total_compute_apportioned += total_compute * (s / total_storage_day)
+            total_storage_day = sum(v for (_, dd), v in storage_by_customer_date.items() if dd == d)
+            if total_storage_day > 0:
+                ratio = s / total_storage_day
+                if compute_by_date.get(d, 0) > 0:
+                    total_compute  += compute_by_date[d]  * ratio
+                if platform_by_date.get(d, 0) > 0:
+                    total_platform += platform_by_date[d] * ratio
+
+        total = round(total_storage + total_compute + total_platform, 2)
+        a = round(total_storage, 2)
+        b = round(total_compute, 2)
+        c = round(total_platform, 2)
         table.append({
-            'customer':     customer,
-            'storage_cost': round(total_storage, 2),
-            'compute_cost': round(total_compute_apportioned, 2),
-            'total_cost':   round(total_storage + total_compute_apportioned, 2),
+            'customer':      customer,
+            'storage_cost':  a,
+            'compute_cost':  b,
+            'platform_cost': c,
+            'total_cost':    total,
+            'pct_storage':   round(a / total * 100, 1) if total else 0,
+            'pct_compute':   round(b / total * 100, 1) if total else 0,
+            'pct_platform':  round(c / total * 100, 1) if total else 0,
         })
 
     table.sort(key=lambda x: -x['total_cost'])
+
+    grand_a = round(sum(r['storage_cost']  for r in table), 2)
+    grand_b = round(sum(r['compute_cost']  for r in table), 2)
+    grand_c = round(sum(r['platform_cost'] for r in table), 2)
+    grand_d = round(grand_a + grand_b + grand_c, 2)
 
     return jsonify({
         'dates':       dates,
@@ -475,9 +495,13 @@ def report():
         'daily_chart': daily_chart,
         'table':       table,
         'totals': {
-            'storage_cost': round(sum(r['storage_cost'] for r in table), 2),
-            'compute_cost': round(sum(r['compute_cost'] for r in table), 2),
-            'total_cost':   round(sum(r['total_cost'] for r in table), 2),
+            'storage_cost':  grand_a,
+            'compute_cost':  grand_b,
+            'platform_cost': grand_c,
+            'total_cost':    grand_d,
+            'pct_storage':   round(grand_a / grand_d * 100, 1) if grand_d else 0,
+            'pct_compute':   round(grand_b / grand_d * 100, 1) if grand_d else 0,
+            'pct_platform':  round(grand_c / grand_d * 100, 1) if grand_d else 0,
         }
     })
 
