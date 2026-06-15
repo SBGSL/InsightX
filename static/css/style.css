@@ -162,8 +162,32 @@ tfoot td { font-weight: 700; border-top: 2px solid #e5e7eb; padding: 10px 12px; 
 .summary-table { width: auto; min-width: 420px; }
 .summary-table td, .summary-table th { padding: 7px 16px; }
 
+/* Month groups in available dates */
+.date-chips { display: flex; flex-direction: column; gap: 16px; }
+.month-group { display: flex; flex-direction: column; gap: 8px; }
+.month-label { display: flex; align-items: center; gap: 10px; }
+.month-name  { font-size: 13px; font-weight: 700; color: #1e40af; background: #eff6ff; border: 1px solid #bfdbfe; padding: 2px 10px; border-radius: 20px; }
+.month-meta  { font-size: 12px; color: #6b7280; }
+.month-chips { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 4px; }
+
+/* Customer filter dropdown */
+.customer-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 100;
+  min-width: 260px; max-height: 320px; display: flex; flex-direction: column;
+}
+.cust-select-all { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; font-size: 13px; font-weight: 600; }
+.cust-list { overflow-y: auto; flex: 1; padding: 6px 0; }
+.cust-item { display: flex; align-items: center; gap: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+.cust-item:hover { background: #f9fafb; }
+.cust-item input { cursor: pointer; accent-color: #4f8ef7; }
+.cust-select-all input { cursor: pointer; accent-color: #4f8ef7; }
+
+/* Other customers row in table */
+tr.other-row td { color: #6b7280; font-style: italic; background: #fafafa; }
+
 /* Date chips */
-.date-chips { display: flex; flex-wrap: wrap; gap: 10px; }
 .date-chip {
   display: flex; align-items: center; gap: 10px;
   background: #f8fafc; border: 1px solid #e2e8f0;

@@ -313,11 +313,32 @@ async function loadAvailableDates() {
     }
     hide('datesEmpty');
     count.textContent = data.length + ' date' + (data.length > 1 ? 's' : '');
-    chips.innerHTML = data.map(d => `
-      <div class="date-chip">
-        <span class="date-chip-date">${d.upload_date}</span>
-        <span class="date-chip-rows">${d.rows} resources</span>
-        <span class="date-chip-cost">₹${fmt(d.total)}</span>
+
+    // Group by Month-YY
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const groups = {};
+    for (const d of data) {
+      const [y, m] = d.upload_date.split('-');
+      const key = MONTHS[parseInt(m)-1] + '-' + y.slice(2);
+      if (!groups[key]) groups[key] = { dates: [], total: 0, key };
+      groups[key].dates.push(d);
+      groups[key].total += d.total;
+    }
+
+    chips.innerHTML = Object.values(groups).map(g => `
+      <div class="month-group">
+        <div class="month-label">
+          <span class="month-name">${g.key}</span>
+          <span class="month-meta">${g.dates.length} day${g.dates.length>1?'s':''} · ₹${fmt(g.total)}</span>
+        </div>
+        <div class="month-chips">
+          ${g.dates.map(d => `
+            <div class="date-chip">
+              <span class="date-chip-date">${d.upload_date}</span>
+              <span class="date-chip-rows">${d.rows} resources</span>
+              <span class="date-chip-cost">₹${fmt(d.total)}</span>
+            </div>`).join('')}
+        </div>
       </div>`).join('');
   } catch (e) {
     chips.innerHTML = `<span class="muted small">Error loading dates: ${e.message}</span>`;
@@ -400,6 +421,123 @@ function _buildChart() {
   document.getElementById(id)?.addEventListener('change', () => { if (_lastDailyChart.length) _buildChart(); });
 });
 
+/* ── Customer filter ── */
+let _selectedCustomers = new Set();
+
+function buildCustomerFilter(customers) {
+  const wrap = document.getElementById('customerFilterWrap');
+  if (!customers.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  _selectedCustomers = new Set(customers);
+
+  const dropdown = document.getElementById('customerDropdown');
+  dropdown.innerHTML = `
+    <div class="cust-select-all">
+      <label><input type="checkbox" id="chkAllCustomers" checked> Select All</label>
+    </div>
+    <div class="cust-list">
+      ${customers.map(c => `
+        <label class="cust-item">
+          <input type="checkbox" class="cust-chk" value="${esc(c)}" checked>
+          ${esc(c)}
+        </label>`).join('')}
+    </div>`;
+
+  function updateFilterLabel() {
+    const lbl = document.getElementById('customerFilterLabel');
+    if (_selectedCustomers.size === customers.length) lbl.textContent = 'All customers';
+    else if (_selectedCustomers.size === 0) lbl.textContent = 'No customers selected';
+    else lbl.textContent = `${_selectedCustomers.size} of ${customers.length} selected`;
+  }
+
+  document.getElementById('chkAllCustomers').addEventListener('change', e => {
+    document.querySelectorAll('.cust-chk').forEach(chk => {
+      chk.checked = e.target.checked;
+      if (e.target.checked) _selectedCustomers.add(chk.value);
+      else _selectedCustomers.delete(chk.value);
+    });
+    updateFilterLabel();
+    renderReportTable();
+  });
+
+  document.querySelectorAll('.cust-chk').forEach(chk => {
+    chk.addEventListener('change', e => {
+      if (e.target.checked) _selectedCustomers.add(e.target.value);
+      else _selectedCustomers.delete(e.target.value);
+      const allChk = document.getElementById('chkAllCustomers');
+      allChk.checked = _selectedCustomers.size === customers.length;
+      updateFilterLabel();
+      renderReportTable();
+    });
+  });
+}
+
+document.getElementById('customerFilterBtn')?.addEventListener('click', () => {
+  const dd = document.getElementById('customerDropdown');
+  dd.classList.toggle('hidden');
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('#customerFilterWrap')) {
+    document.getElementById('customerDropdown')?.classList.add('hidden');
+  }
+});
+
+function renderReportTable() {
+  const data = window._reportData;
+  if (!data) return;
+  const allRows  = data.table;
+  const selected = allRows.filter(r => _selectedCustomers.has(r.customer));
+  const others   = allRows.filter(r => !_selectedCustomers.has(r.customer));
+
+  const grandD = data.totals.total_cost;
+
+  const tableRows = selected.map((r, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><strong>${esc(r.customer)}</strong></td>
+      <td class="num">${fmt(r.storage_cost)}</td>
+      <td class="num pct">${r.pct_storage}%</td>
+      <td class="num">${fmt(r.compute_cost)}</td>
+      <td class="num pct">${r.pct_compute}%</td>
+      <td class="num">${fmt(r.platform_cost)}</td>
+      <td class="num pct">${r.pct_platform}%</td>
+      <td class="num"><strong>${fmt(r.total_cost)}</strong></td>
+    </tr>`);
+
+  if (others.length) {
+    const oa = others.reduce((s,r) => s + r.storage_cost,  0);
+    const ob = others.reduce((s,r) => s + r.compute_cost,  0);
+    const oc = others.reduce((s,r) => s + r.platform_cost, 0);
+    const od = oa + ob + oc;
+    tableRows.push(`
+      <tr class="other-row">
+        <td>—</td>
+        <td><em>Other Customers (${others.length})</em></td>
+        <td class="num">${fmt(oa)}</td>
+        <td class="num pct">${grandD ? (oa/grandD*100).toFixed(1) : 0}%</td>
+        <td class="num">${fmt(ob)}</td>
+        <td class="num pct">${grandD ? (ob/grandD*100).toFixed(1) : 0}%</td>
+        <td class="num">${fmt(oc)}</td>
+        <td class="num pct">${grandD ? (oc/grandD*100).toFixed(1) : 0}%</td>
+        <td class="num"><strong>${fmt(od)}</strong></td>
+      </tr>`);
+  }
+
+  document.querySelector('#reportTable tbody').innerHTML = tableRows.join('');
+
+  const t = data.totals;
+  document.querySelector('#reportTable tfoot').innerHTML = `<tr>
+    <td colspan="2">TOTAL</td>
+    <td class="num">${fmt(t.storage_cost)}</td>
+    <td class="num pct">${t.pct_storage}%</td>
+    <td class="num">${fmt(t.compute_cost)}</td>
+    <td class="num pct">${t.pct_compute}%</td>
+    <td class="num">${fmt(t.platform_cost)}</td>
+    <td class="num pct">${t.pct_platform}%</td>
+    <td class="num">${fmt(t.total_cost)}</td>
+  </tr>`;
+}
+
 /* ── Load report ── */
 document.getElementById('loadReportBtn').addEventListener('click', loadReport);
 
@@ -416,6 +554,7 @@ async function loadReport() {
     meta.textContent = '';
     document.getElementById('chartWrap').style.display = 'none';
     document.getElementById('reportTableWrap').style.display = 'none';
+    document.getElementById('customerFilterWrap').style.display = 'none';
     show('reportEmpty');
     return;
   }
@@ -423,45 +562,31 @@ async function loadReport() {
   meta.textContent = `${data.dates.length} day${data.dates.length>1?'s':''} of data  (${data.dates[0]} → ${data.dates[data.dates.length-1]})`;
 
   renderChart(data.daily_chart);
-
-  document.getElementById('reportTableWrap').style.display = 'block';
-  const tbody = document.querySelector('#reportTable tbody');
-  tbody.innerHTML = data.table.map((r, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td><strong>${esc(r.customer)}</strong></td>
-      <td class="num">${fmt(r.storage_cost)}</td>
-      <td class="num pct">${r.pct_storage}%</td>
-      <td class="num">${fmt(r.compute_cost)}</td>
-      <td class="num pct">${r.pct_compute}%</td>
-      <td class="num">${fmt(r.platform_cost)}</td>
-      <td class="num pct">${r.pct_platform}%</td>
-      <td class="num"><strong>${fmt(r.total_cost)}</strong></td>
-    </tr>`).join('');
-
-  const t = data.totals;
-  const tfoot = document.querySelector('#reportTable tfoot');
-  tfoot.innerHTML = `<tr>
-    <td colspan="2">TOTAL</td>
-    <td class="num">${fmt(t.storage_cost)}</td>
-    <td class="num pct">${t.pct_storage}%</td>
-    <td class="num">${fmt(t.compute_cost)}</td>
-    <td class="num pct">${t.pct_compute}%</td>
-    <td class="num">${fmt(t.platform_cost)}</td>
-    <td class="num pct">${t.pct_platform}%</td>
-    <td class="num">${fmt(t.total_cost)}</td>
-  </tr>`;
-
   window._reportData = data;
+
+  buildCustomerFilter(data.table.map(r => r.customer));
+  document.getElementById('reportTableWrap').style.display = 'block';
+  renderReportTable();
 }
 
 /* ── Export CSV ── */
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
   if (!window._reportData) { alert('Load report first.'); return; }
   const d = window._reportData;
+  const selected = d.table.filter(r => _selectedCustomers.has(r.customer));
+  const others   = d.table.filter(r => !_selectedCustomers.has(r.customer));
+  const csvRows  = [...selected];
+  if (others.length) {
+    const oa = others.reduce((s,r) => s+r.storage_cost, 0);
+    const ob = others.reduce((s,r) => s+r.compute_cost, 0);
+    const oc = others.reduce((s,r) => s+r.platform_cost, 0);
+    const od = oa+ob+oc;
+    const gd = d.totals.total_cost;
+    csvRows.push({ customer: `Other Customers (${others.length})`, storage_cost: oa, pct_storage: gd?(oa/gd*100).toFixed(1):0, compute_cost: ob, pct_compute: gd?(ob/gd*100).toFixed(1):0, platform_cost: oc, pct_platform: gd?(oc/gd*100).toFixed(1):0, total_cost: od });
+  }
   const rows = [
     ['Customer Name', 'A - Storage Cost (INR)', 'A %', 'B - Compute Cost (INR)', 'B %', 'C - Platform Cost (INR)', 'C %', 'D - Total Cost (INR)'],
-    ...d.table.map(r => [r.customer, r.storage_cost, r.pct_storage+'%', r.compute_cost, r.pct_compute+'%', r.platform_cost, r.pct_platform+'%', r.total_cost]),
+    ...csvRows.map(r => [r.customer, r.storage_cost, r.pct_storage+'%', r.compute_cost, r.pct_compute+'%', r.platform_cost, r.pct_platform+'%', r.total_cost]),
     ['TOTAL', d.totals.storage_cost, d.totals.pct_storage+'%', d.totals.compute_cost, d.totals.pct_compute+'%', d.totals.platform_cost, d.totals.pct_platform+'%', d.totals.total_cost],
   ];
   const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
