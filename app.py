@@ -255,6 +255,7 @@ def upload():
         return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
 def _upload():
+    import io
     file       = request.files.get('file')
     session_id = request.form.get('session_id') or datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
 
@@ -262,7 +263,8 @@ def _upload():
         return jsonify({'error': 'No file provided'}), 400
 
     try:
-        wb = openpyxl.load_workbook(file, data_only=True)
+        file_bytes = io.BytesIO(file.read())
+        wb = openpyxl.load_workbook(file_bytes, data_only=True)
         ws = wb.active
     except Exception as e:
         return jsonify({'error': f'Cannot read file: {e}'}), 400
