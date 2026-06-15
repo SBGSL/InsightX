@@ -122,14 +122,17 @@ PLATFORM_TYPES = {
 def normalize_resource_type(rt: str) -> str:
     return AZURE_PROVIDER_TYPE_MAP.get(rt.strip().lower(), rt.strip())
 
-def classify_resource(resource: str, resource_azure_type: str, resource_group: str, db) -> str | None:
-    key = resource.strip().lower()
+def load_type_map(db) -> dict:
     cur = get_cur(db)
-    cur.execute('SELECT type FROM resource_type_map WHERE resource_key = %s', (key,))
-    row = cur.fetchone()
+    cur.execute('SELECT resource_key, type FROM resource_type_map')
+    result = {row['resource_key']: row['type'] for row in cur.fetchall()}
     cur.close()
-    if row:
-        return row['type']
+    return result
+
+def classify_resource(resource: str, resource_azure_type: str, resource_group: str, type_map: dict) -> str | None:
+    key = resource.strip().lower()
+    if key in type_map:
+        return type_map[key]
 
     rt   = normalize_resource_type(resource_azure_type or '')
     name = key
@@ -277,14 +280,15 @@ def _upload():
     if not raw_rows:
         return jsonify({'error': 'No data rows found in file. Check the file format.'}), 400
 
-    db = get_db()
+    db       = get_db()
+    type_map = load_type_map(db)
     classified   = []
     unclassified = []
 
     for row in raw_rows:
         resource    = row['resource']
         upload_date = row.get('file_date') or date.today().isoformat()
-        t = classify_resource(resource, row['resource_type'], row['resource_group'], db)
+        t = classify_resource(resource, row['resource_type'], row['resource_group'], type_map)
         entry = {**row, 'upload_date': upload_date}
         entry.pop('file_date', None)
         if t:
