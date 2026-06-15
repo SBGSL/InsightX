@@ -3,3 +3,4 @@ data/master.xlsx
 __pycache__/
 *.pyc
 .env
+.claude/settings.local.json

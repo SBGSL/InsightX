@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git push *)",
+            "command": "jq -r '.tool_input.command' | grep -q 'git push' && cd /home/user/InsightX && vercel deploy --prod --yes 2>&1 || true",
+            "timeout": 120,
+            "statusMessage": "Deploying to Vercel..."
+          }
+        ]
+      }
+    ]
+  }
+}
