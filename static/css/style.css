@@ -170,27 +170,17 @@ tfoot td { font-weight: 700; border-top: 2px solid #e5e7eb; padding: 10px 12px; 
 .month-meta  { font-size: 12px; color: #6b7280; }
 .month-chips { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 4px; }
 
-/* Column filter button */
-.col-filter-btn {
-  background: none; border: none; cursor: pointer;
-  color: #9ca3af; font-size: 12px; padding: 1px 4px; border-radius: 4px;
-  line-height: 1; transition: color .15s, background .15s;
+/* Customer filter chip panel */
+.cust-panel-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.cust-panel-title  { font-size: 12.5px; font-weight: 600; color: #374151; }
+.cust-chip-list    { display: flex; flex-wrap: wrap; gap: 6px; }
+.cust-chip {
+  padding: 5px 12px; border-radius: 20px; font-size: 12.5px;
+  cursor: pointer; user-select: none; transition: all .15s;
+  border: 1.5px solid transparent;
 }
-.col-filter-btn:hover, .col-filter-btn.active { color: #4f8ef7; background: #eff6ff; }
-
-/* Customer filter dropdown */
-.customer-dropdown {
-  position: fixed;
-  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.14); z-index: 9999;
-  min-width: 260px; max-height: 340px; display: flex; flex-direction: column;
-}
-.cust-select-all { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; font-size: 13px; font-weight: 600; }
-.cust-list { overflow-y: auto; flex: 1; padding: 6px 0; }
-.cust-item { display: flex; align-items: center; gap: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
-.cust-item:hover { background: #f9fafb; }
-.cust-item input { cursor: pointer; accent-color: #4f8ef7; }
-.cust-select-all input { cursor: pointer; accent-color: #4f8ef7; }
+.cust-chip-on  { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+.cust-chip-off { background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb; }
 
 /* Other customers row in table */
 tr.other-row td { color: #6b7280; font-style: italic; background: #fafafa; }

@@ -185,17 +185,22 @@
           <canvas id="costChart" height="100"></canvas>
         </div>
 
+        <!-- Customer filter panel — visible after report loads -->
+        <div id="customerFilterPanel" style="display:none; margin-bottom:16px;">
+          <div class="cust-panel-header">
+            <span class="cust-panel-title">Filter Customers</span>
+            <span id="custFilterCount" class="badge badge-green"></span>
+            <button class="btn btn-outline" id="custSelectAll" style="padding:4px 10px;font-size:12px;">Select All</button>
+            <button class="btn btn-outline" id="custClearAll" style="padding:4px 10px;font-size:12px;">Clear All</button>
+          </div>
+          <div id="custChipList" class="cust-chip-list"></div>
+        </div>
+
         <div class="table-wrap" id="reportTableWrap" style="display:none">
           <table id="reportTable">
             <thead><tr>
               <th>#</th>
-              <th style="position:relative;">
-                <div style="display:flex;align-items:center;gap:6px;">
-                  Customer Name
-                  <button id="customerFilterBtn" class="col-filter-btn" title="Filter customers">▾</button>
-                </div>
-                <div id="customerDropdown" class="customer-dropdown hidden"></div>
-              </th>
+              <th>Customer Name</th>
               <th>A — Storage Cost (INR)</th>
               <th>A %</th>
               <th>B — Compute Cost (INR)</th>

@@ -422,70 +422,54 @@ function _buildChart() {
 });
 
 /* ── Customer filter ── */
-let _allCustomers    = [];
+let _allCustomers      = [];
 let _selectedCustomers = new Set();
 
-function updateFilterBtn() {
-  const btn = document.getElementById('customerFilterBtn');
-  if (!btn) return;
-  const isFiltered = _selectedCustomers.size < _allCustomers.length;
-  btn.classList.toggle('active', isFiltered);
-  btn.title = isFiltered ? `${_selectedCustomers.size} of ${_allCustomers.length} customers shown` : 'Filter customers';
+function buildCustomerFilter(customers) {
+  _allCustomers      = customers;
+  _selectedCustomers = new Set(customers);
+
+  const panel = document.getElementById('customerFilterPanel');
+  if (!customers.length) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+
+  _renderCustChips();
+
+  document.getElementById('custSelectAll').onclick = () => {
+    _selectedCustomers = new Set(_allCustomers);
+    _renderCustChips();
+    renderReportTable();
+  };
+  document.getElementById('custClearAll').onclick = () => {
+    _selectedCustomers = new Set();
+    _renderCustChips();
+    renderReportTable();
+  };
 }
 
-function buildCustomerFilter(customers) {
-  _allCustomers = customers;
-  _selectedCustomers = new Set(customers);
-  updateFilterBtn();
-
-  const dropdown = document.getElementById('customerDropdown');
-  dropdown.innerHTML = `
-    <div class="cust-select-all">
-      <label><input type="checkbox" id="chkAllCustomers" checked> Select All (${customers.length})</label>
-    </div>
-    <div class="cust-list">
-      ${customers.map((c, i) => `
-        <label class="cust-item">
-          <input type="checkbox" class="cust-chk" data-idx="${i}" checked>
-          ${esc(c)}
-        </label>`).join('')}
-    </div>`;
-
-  dropdown.querySelector('#chkAllCustomers').addEventListener('change', e => {
-    _selectedCustomers = e.target.checked ? new Set(_allCustomers) : new Set();
-    dropdown.querySelectorAll('.cust-chk').forEach(chk => { chk.checked = e.target.checked; });
-    updateFilterBtn();
-    renderReportTable();
-  });
-
-  dropdown.querySelectorAll('.cust-chk').forEach((chk, i) => {
-    chk.addEventListener('change', () => {
-      if (chk.checked) _selectedCustomers.add(_allCustomers[i]);
-      else             _selectedCustomers.delete(_allCustomers[i]);
-      dropdown.querySelector('#chkAllCustomers').checked = (_selectedCustomers.size === _allCustomers.length);
-      updateFilterBtn();
+function _renderCustChips() {
+  const list = document.getElementById('custChipList');
+  list.innerHTML = _allCustomers.map((c, i) => {
+    const sel = _selectedCustomers.has(c);
+    return `<span class="cust-chip ${sel ? 'cust-chip-on' : 'cust-chip-off'}" data-idx="${i}">${esc(c)}</span>`;
+  }).join('');
+  list.querySelectorAll('.cust-chip').forEach((chip, i) => {
+    chip.addEventListener('click', () => {
+      const c = _allCustomers[i];
+      if (_selectedCustomers.has(c)) _selectedCustomers.delete(c);
+      else                           _selectedCustomers.add(c);
+      chip.classList.toggle('cust-chip-on');
+      chip.classList.toggle('cust-chip-off');
+      document.getElementById('custFilterCount').textContent =
+        _selectedCustomers.size === _allCustomers.length
+          ? 'All' : `${_selectedCustomers.size} / ${_allCustomers.length}`;
       renderReportTable();
     });
   });
+  document.getElementById('custFilterCount').textContent =
+    _selectedCustomers.size === _allCustomers.length
+      ? 'All' : `${_selectedCustomers.size} / ${_allCustomers.length}`;
 }
-
-document.addEventListener('click', e => {
-  const btn = document.getElementById('customerFilterBtn');
-  const dd  = document.getElementById('customerDropdown');
-  if (!btn || !dd) return;
-  if (btn.contains(e.target)) {
-    e.stopPropagation();
-    const isHidden = dd.classList.contains('hidden');
-    if (isHidden) {
-      const rect = btn.getBoundingClientRect();
-      dd.style.top  = (rect.bottom + 6) + 'px';
-      dd.style.left = rect.left + 'px';
-    }
-    dd.classList.toggle('hidden');
-  } else if (!dd.contains(e.target)) {
-    dd.classList.add('hidden');
-  }
-});
 
 function renderReportTable() {
   const data = window._reportData;
