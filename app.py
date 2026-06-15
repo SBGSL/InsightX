@@ -298,7 +298,8 @@ def upload():
             '''INSERT INTO pending_classifications
                (session_id, resource, resource_id, resource_type, resource_group,
                 subscription_name, cost_inr, cost_usd, currency, upload_date)
-               VALUES %s''',
+               VALUES %s
+               ON CONFLICT (session_id, resource) DO NOTHING''',
             [(session_id, u['resource'], u['resource_id'], u['resource_type'],
               u['resource_group'], u['subscription_name'], u['cost_inr'],
               u['cost_usd'], u['currency'], u['upload_date']) for u in unclassified]
