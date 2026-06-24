@@ -609,6 +609,7 @@ function closeCustModal() {
   document.getElementById('custModal').classList.add('hidden');
   if (_custModalChart) { _custModalChart.destroy(); _custModalChart = null; }
   document.getElementById('custModalChart').style.display = 'none';
+  document.getElementById('custModalStats').style.display = 'none';
   document.getElementById('custModalLoading').style.display = 'block';
 }
 
@@ -626,6 +627,23 @@ async function openCustModal(customer) {
   const data = await res.json();
 
   document.getElementById('custModalLoading').style.display = 'none';
+
+  const days      = data.length || 1;
+  const totA      = data.reduce((s, d) => s + d.storage,  0);
+  const totB      = data.reduce((s, d) => s + d.compute,  0);
+  const totC      = data.reduce((s, d) => s + d.platform, 0);
+  const totD      = data.reduce((s, d) => s + d.total,    0);
+  const avgGross  = (totA + totB) / days;
+  const avgNet    = totD / days;
+
+  const statsEl = document.getElementById('custModalStats');
+  statsEl.style.display = 'flex';
+  statsEl.innerHTML = `
+    <div class="modal-stat"><div class="modal-stat-label">Total Cost</div><div class="modal-stat-value">₹${fmt(totD)}</div></div>
+    <div class="modal-stat"><div class="modal-stat-label">Days</div><div class="modal-stat-value">${days}</div></div>
+    <div class="modal-stat"><div class="modal-stat-label">Avg Gross/Day<span class="modal-stat-hint">(A+B)/days</span></div><div class="modal-stat-value">₹${fmt(avgGross)}</div></div>
+    <div class="modal-stat"><div class="modal-stat-label">Avg Net/Day<span class="modal-stat-hint">Total/days</span></div><div class="modal-stat-value">₹${fmt(avgNet)}</div></div>`;
+
   const canvas = document.getElementById('custModalChart');
   canvas.style.display = 'block';
 
