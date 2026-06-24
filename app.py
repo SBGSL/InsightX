@@ -511,12 +511,79 @@ def history():
     db  = get_db()
     cur = get_cur(db)
     cur.execute(
-        '''SELECT upload_date, COUNT(*) as rows, SUM(cost_inr) as total
-           FROM daily_costs GROUP BY upload_date ORDER BY upload_date DESC'''
+        '''SELECT
+               LEFT(upload_date, 7) AS month,
+               SUM(CASE WHEN type='Customer Specific (Storage,Read/write)' THEN cost_inr ELSE 0 END) AS storage,
+               SUM(CASE WHEN type='Customer Attributed (Compute)'          THEN cost_inr ELSE 0 END) AS compute,
+               SUM(CASE WHEN type='Platform'                               THEN cost_inr ELSE 0 END) AS platform,
+               SUM(cost_inr) AS total
+           FROM daily_costs
+           GROUP BY LEFT(upload_date, 7)
+           ORDER BY month DESC'''
     )
     rows = cur.fetchall()
     cur.close()
     return jsonify([dict(r) for r in rows])
+
+
+@app.route('/history/month/<month>')
+def history_month(month):
+    db  = get_db()
+    cur = get_cur(db)
+    cur.execute(
+        '''SELECT
+               upload_date,
+               SUM(CASE WHEN type='Customer Specific (Storage,Read/write)' THEN cost_inr ELSE 0 END) AS storage,
+               SUM(CASE WHEN type='Customer Attributed (Compute)'          THEN cost_inr ELSE 0 END) AS compute,
+               SUM(CASE WHEN type='Platform'                               THEN cost_inr ELSE 0 END) AS platform,
+               SUM(cost_inr) AS total
+           FROM daily_costs
+           WHERE LEFT(upload_date, 7) = %s
+           GROUP BY upload_date
+           ORDER BY upload_date DESC''',
+        (month,)
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/history/date/<date>/top10')
+def history_date_top10(date):
+    db  = get_db()
+    cur = get_cur(db)
+    cur.execute(
+        '''SELECT upload_date, resource, type, cost_inr
+           FROM daily_costs WHERE upload_date = %s''',
+        (date,)
+    )
+    rows = cur.fetchall()
+    cur.close()
+
+    compute_total  = sum(r['cost_inr'] for r in rows if r['type'] == 'Customer Attributed (Compute)')
+    platform_total = sum(r['cost_inr'] for r in rows if r['type'] == 'Platform')
+
+    storage_by_cust = {}
+    for r in rows:
+        if r['type'] == 'Customer Specific (Storage,Read/write)':
+            storage_by_cust[r['resource']] = storage_by_cust.get(r['resource'], 0) + r['cost_inr']
+
+    total_storage = sum(storage_by_cust.values())
+    result = []
+    for customer, s in storage_by_cust.items():
+        ratio = s / total_storage if total_storage else 0
+        b = compute_total  * ratio
+        c = platform_total * ratio
+        result.append({
+            'customer':      customer,
+            'storage_cost':  round(s, 2),
+            'compute_cost':  round(b, 2),
+            'platform_cost': round(c, 2),
+            'total_cost':    round(s + b + c, 2),
+        })
+
+    result.sort(key=lambda x: -x['total_cost'])
+    return jsonify(result[:10])
 
 
 if DATABASE_URL:

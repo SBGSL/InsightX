@@ -144,17 +144,6 @@
         <p>Apportioned compute cost + direct storage cost per customer.</p>
       </div>
 
-      <!-- Available dates -->
-      <div class="card" id="availableDatesCard">
-        <div class="card-header">
-          <h2>Available Dates</h2>
-          <span id="datesCount" class="badge badge-green"></span>
-          <button class="btn btn-outline" style="margin-left:auto;padding:5px 12px;font-size:12px" onclick="loadAvailableDates()">↺ Refresh</button>
-        </div>
-        <div id="dateChips" class="date-chips"></div>
-        <div id="datesEmpty" class="empty-state hidden">No data uploaded yet. Go to Upload tab to add data.</div>
-      </div>
-
       <!-- Report -->
       <div class="card">
         <div class="report-controls">
@@ -232,13 +221,20 @@
     <section id="view-history" class="view">
       <div class="page-header">
         <h1>Upload History</h1>
-        <p>All dates for which cost data has been committed.</p>
+        <p>Month-wise cost breakdown. Click a month to expand date detail and top-10 chart.</p>
       </div>
       <div class="card">
         <div class="table-wrap">
           <table id="historyTable">
-            <thead><tr><th>Date</th><th>Resources</th><th>Total Cost (INR)</th></tr></thead>
-            <tbody></tbody>
+            <thead><tr>
+              <th></th>
+              <th>Month</th>
+              <th>A — Storage (INR)</th>
+              <th>B — Compute (INR)</th>
+              <th>C — Platform (INR)</th>
+              <th>D — Total (INR)</th>
+            </tr></thead>
+            <tbody id="historyTbody"></tbody>
           </table>
         </div>
         <div id="historyEmpty" class="empty-state hidden">No uploads yet.</div>

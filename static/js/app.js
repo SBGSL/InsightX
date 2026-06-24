@@ -606,18 +606,139 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
 });
 
 /* ── History ── */
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtMonth(ym) {
+  const [y, m] = ym.split('-');
+  return MONTHS_SHORT[parseInt(m)-1] + ' ' + y;
+}
+
+let _historyChart = null;
+
 async function loadHistory() {
   const res  = await fetch('/history');
   const data = await res.json();
-  const tbody = document.querySelector('#historyTable tbody');
+  const tbody = document.getElementById('historyTbody');
   if (!data.length) { show('historyEmpty'); tbody.innerHTML = ''; return; }
   hide('historyEmpty');
-  tbody.innerHTML = data.map(r => `
-    <tr>
-      <td>${r.upload_date}</td>
-      <td>${r.rows}</td>
-      <td class="num">${fmt(r.total)}</td>
+
+  tbody.innerHTML = data.map(m => `
+    <tr class="hist-month-row" data-month="${m.month}">
+      <td class="hist-toggle">▶</td>
+      <td><strong>${fmtMonth(m.month)}</strong></td>
+      <td class="num">${fmt(m.storage)}</td>
+      <td class="num">${fmt(m.compute)}</td>
+      <td class="num">${fmt(m.platform)}</td>
+      <td class="num"><strong>${fmt(m.total)}</strong></td>
+    </tr>
+    <tr class="hist-detail-row hidden" id="detail-${m.month}">
+      <td colspan="6" style="padding:0;">
+        <div class="hist-detail-wrap">
+          <div class="hist-detail-inner" id="inner-${m.month}">
+            <div class="hist-loading">Loading…</div>
+          </div>
+        </div>
+      </td>
     </tr>`).join('');
+
+  tbody.querySelectorAll('.hist-month-row').forEach(row => {
+    row.addEventListener('click', () => toggleHistoryMonth(row.dataset.month, row));
+  });
+}
+
+async function toggleHistoryMonth(month, row) {
+  const detailRow = document.getElementById(`detail-${month}`);
+  const toggle    = row.querySelector('.hist-toggle');
+  const isOpen    = !detailRow.classList.contains('hidden');
+
+  if (isOpen) {
+    detailRow.classList.add('hidden');
+    toggle.textContent = '▶';
+    return;
+  }
+
+  detailRow.classList.remove('hidden');
+  toggle.textContent = '▼';
+
+  const inner = document.getElementById(`inner-${month}`);
+  if (inner.dataset.loaded) return;
+  inner.dataset.loaded = '1';
+
+  const res  = await fetch(`/history/month/${month}`);
+  const dates = await res.json();
+
+  inner.innerHTML = `
+    <table class="hist-date-table">
+      <thead><tr>
+        <th>Date</th>
+        <th>A — Storage (INR)</th>
+        <th>B — Compute (INR)</th>
+        <th>C — Platform (INR)</th>
+        <th>D — Total (INR)</th>
+        <th></th>
+      </tr></thead>
+      <tbody>
+        ${dates.map(d => `
+          <tr class="hist-date-row" data-date="${d.upload_date}">
+            <td>${d.upload_date}</td>
+            <td class="num">${fmt(d.storage)}</td>
+            <td class="num">${fmt(d.compute)}</td>
+            <td class="num">${fmt(d.platform)}</td>
+            <td class="num"><strong>${fmt(d.total)}</strong></td>
+            <td><button class="btn btn-outline hist-chart-btn" style="padding:3px 10px;font-size:12px;" data-date="${d.upload_date}">📊 Top 10</button></td>
+          </tr>
+          <tr class="hist-chart-row hidden" id="chart-row-${d.upload_date}">
+            <td colspan="6">
+              <div class="hist-chart-wrap">
+                <div class="hist-chart-title">Top 10 Customers — ${d.upload_date}</div>
+                <canvas id="hist-chart-${d.upload_date}" height="120"></canvas>
+              </div>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+
+  inner.querySelectorAll('.hist-chart-btn').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); toggleTop10Chart(btn.dataset.date); });
+  });
+}
+
+async function toggleTop10Chart(date) {
+  const row = document.getElementById(`chart-row-${date}`);
+  const btn = document.querySelector(`.hist-chart-btn[data-date="${date}"]`);
+  const isOpen = !row.classList.contains('hidden');
+
+  if (isOpen) { row.classList.add('hidden'); btn.textContent = '📊 Top 10'; return; }
+  row.classList.remove('hidden');
+  btn.textContent = '✕ Close';
+
+  const canvasId = `hist-chart-${date}`;
+  if (document.getElementById(canvasId).dataset.rendered) return;
+  document.getElementById(canvasId).dataset.rendered = '1';
+
+  const res  = await fetch(`/history/date/${date}/top10`);
+  const data = await res.json();
+  if (!data.length) return;
+
+  if (_historyChart) _historyChart.destroy();
+  _historyChart = new Chart(document.getElementById(canvasId), {
+    type: 'bar',
+    data: {
+      labels: data.map(r => r.customer),
+      datasets: [
+        { label: 'A — Storage',  data: data.map(r => r.storage_cost),  backgroundColor: 'rgba(251,146,60,0.85)',  borderRadius: 3 },
+        { label: 'B — Compute',  data: data.map(r => r.compute_cost),  backgroundColor: 'rgba(79,142,247,0.85)',  borderRadius: 3 },
+        { label: 'C — Platform', data: data.map(r => r.platform_cost), backgroundColor: 'rgba(139,92,246,0.85)', borderRadius: 3 },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { stacked: true, ticks: { maxRotation: 30 } },
+        y: { stacked: true, ticks: { callback: v => '₹' + (v >= 1000 ? (v/1000).toFixed(1)+'k' : v) } },
+      },
+    },
+  });
 }
 
 /* ── Helpers ── */
