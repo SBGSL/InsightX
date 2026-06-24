@@ -572,13 +572,22 @@ function renderReportTable() {
     const gC = grp.reduce((s,r) => s + r.platform_cost, 0);
     const gD = gA + gB + gC;
 
-    // Group header row
+    // Group header row with inline subtotals
     tableRows.push(`
       <tr class="it-group-row">
-        <td colspan="11">
+        <td colspan="2">
           <span class="it-badge it-badge-${it.toLowerCase()}">${it}</span>
-          <span class="it-group-meta">${grp.length} customer${grp.length>1?'s':''} &nbsp;·&nbsp; ₹${fmt(gD)}</span>
+          <span class="it-group-meta">${grp.length} customer${grp.length>1?'s':''}</span>
         </td>
+        <td class="num">${fmt(gA)}</td>
+        <td class="num pct">${grandD?(gA/grandD*100).toFixed(1):0}%</td>
+        <td class="num">${fmt(gB)}</td>
+        <td class="num pct">${grandD?(gB/grandD*100).toFixed(1):0}%</td>
+        <td class="num">${fmt(gC)}</td>
+        <td class="num pct">${grandD?(gC/grandD*100).toFixed(1):0}%</td>
+        <td class="num"><strong>${fmt(gD)}</strong></td>
+        <td class="num">${fmt((gA+gB)/days)}</td>
+        <td class="num">${fmt(gD/days)}</td>
       </tr>`);
 
     // Customer rows
@@ -600,21 +609,6 @@ function renderReportTable() {
           <td class="num">${fmt(avgNet)}</td>
         </tr>`);
     });
-
-    // Subtotal row for group
-    tableRows.push(`
-      <tr class="it-subtotal-row">
-        <td colspan="2"><strong>${it} Subtotal</strong></td>
-        <td class="num">${fmt(gA)}</td>
-        <td class="num pct">${grandD?(gA/grandD*100).toFixed(1):0}%</td>
-        <td class="num">${fmt(gB)}</td>
-        <td class="num pct">${grandD?(gB/grandD*100).toFixed(1):0}%</td>
-        <td class="num">${fmt(gC)}</td>
-        <td class="num pct">${grandD?(gC/grandD*100).toFixed(1):0}%</td>
-        <td class="num"><strong>${fmt(gD)}</strong></td>
-        <td class="num">${fmt((gA+gB)/days)}</td>
-        <td class="num">${fmt(gD/days)}</td>
-      </tr>`);
   });
 
   if (others.length) {
@@ -794,9 +788,9 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
     csvRows.push({ customer: `Other Customers (${others.length})`, storage_cost: oa, pct_storage: gd?(oa/gd*100).toFixed(1):0, compute_cost: ob, pct_compute: gd?(ob/gd*100).toFixed(1):0, platform_cost: oc, pct_platform: gd?(oc/gd*100).toFixed(1):0, total_cost: od, avg_gross: ((oa+ob)/days).toFixed(2), avg_net: (od/days).toFixed(2) });
   }
   const rows = [
-    ['Customer Name', 'A - Storage Cost (INR)', 'A %', 'B - Compute Cost (INR)', 'B %', 'C - Platform Cost (INR)', 'C %', 'D - Total Cost (INR)', 'Avg Gross/Day (INR)', 'Avg Net/Day (INR)'],
-    ...csvRows.map(r => [r.customer, r.storage_cost, r.pct_storage+'%', r.compute_cost, r.pct_compute+'%', r.platform_cost, r.pct_platform+'%', r.total_cost, r.avg_gross, r.avg_net]),
-    ['TOTAL', d.totals.storage_cost, d.totals.pct_storage+'%', d.totals.compute_cost, d.totals.pct_compute+'%', d.totals.platform_cost, d.totals.pct_platform+'%', d.totals.total_cost, ((d.totals.storage_cost+d.totals.compute_cost)/days).toFixed(2), (d.totals.total_cost/days).toFixed(2)],
+    ['Instance Type', 'Customer Name', 'A - Storage Cost (INR)', 'A %', 'B - Compute Cost (INR)', 'B %', 'C - Platform Cost (INR)', 'C %', 'D - Total Cost (INR)', 'Avg Gross/Day (INR)', 'Avg Net/Day (INR)'],
+    ...csvRows.map(r => [r.instance_type || 'Unknown', r.customer, r.storage_cost, r.pct_storage+'%', r.compute_cost, r.pct_compute+'%', r.platform_cost, r.pct_platform+'%', r.total_cost, r.avg_gross, r.avg_net]),
+    ['TOTAL', '', d.totals.storage_cost, d.totals.pct_storage+'%', d.totals.compute_cost, d.totals.pct_compute+'%', d.totals.platform_cost, d.totals.pct_platform+'%', d.totals.total_cost, ((d.totals.storage_cost+d.totals.compute_cost)/days).toFixed(2), (d.totals.total_cost/days).toFixed(2)],
   ];
   const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
