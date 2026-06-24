@@ -133,9 +133,16 @@ tfoot td { font-weight: 700; border-top: 2px solid #e5e7eb; padding: 10px 12px; 
 
 #reportTableWrap { overflow-x: visible; }
 #reportTable { table-layout: fixed; width: 100%; }
-#reportTable th, #reportTable td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#reportTable th:nth-child(1), #reportTable td:nth-child(1) { width: 48px; }
-#reportTable th:nth-child(2), #reportTable td:nth-child(2) { width: 17%; }
+#reportTable th, #reportTable td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 9px 8px; font-size: 12.5px; }
+#reportTable th { padding: 10px 8px; font-size: 11.5px; }
+/* col 1: # */
+#reportTable th:nth-child(1), #reportTable td:nth-child(1) { width: 38px; }
+/* col 2: Customer Name */
+#reportTable th:nth-child(2), #reportTable td:nth-child(2) { width: 15%; }
+/* col 4/6/8: % columns */
+#reportTable th:nth-child(4), #reportTable td:nth-child(4),
+#reportTable th:nth-child(6), #reportTable td:nth-child(6),
+#reportTable th:nth-child(8), #reportTable td:nth-child(8) { width: 48px; }
 
 /* ── Misc ── */
 .muted { color: #6b7280; }

@@ -499,10 +499,13 @@ function renderReportTable() {
   const allRows  = data.table;
   const selected = allRows.filter(r => _selectedCustomers.has(r.customer));
   const others   = allRows.filter(r => !_selectedCustomers.has(r.customer));
+  const days     = data.dates.length || 1;
+  const grandD   = data.totals.total_cost;
 
-  const grandD = data.totals.total_cost;
-
-  const tableRows = selected.map((r, i) => `
+  const tableRows = selected.map((r, i) => {
+    const avgGross = (r.storage_cost + r.compute_cost) / days;
+    const avgNet   = r.total_cost / days;
+    return `
     <tr>
       <td>${i + 1}</td>
       <td><a class="cust-link" data-customer="${esc(r.customer)}" href="#">${esc(r.customer)}</a></td>
@@ -513,7 +516,10 @@ function renderReportTable() {
       <td class="num">${fmt(r.platform_cost)}</td>
       <td class="num pct">${r.pct_platform}%</td>
       <td class="num"><strong>${fmt(r.total_cost)}</strong></td>
-    </tr>`);
+      <td class="num">${fmt(avgGross)}</td>
+      <td class="num">${fmt(avgNet)}</td>
+    </tr>`;
+  });
 
   if (others.length) {
     const oa = others.reduce((s,r) => s + r.storage_cost,  0);
@@ -531,6 +537,8 @@ function renderReportTable() {
         <td class="num">${fmt(oc)}</td>
         <td class="num pct">${grandD ? (oc/grandD*100).toFixed(1) : 0}%</td>
         <td class="num"><strong>${fmt(od)}</strong></td>
+        <td class="num">${fmt((oa+ob)/days)}</td>
+        <td class="num">${fmt(od/days)}</td>
       </tr>`);
   }
 
@@ -546,6 +554,8 @@ function renderReportTable() {
     <td class="num">${fmt(t.platform_cost)}</td>
     <td class="num pct">${t.pct_platform}%</td>
     <td class="num">${fmt(t.total_cost)}</td>
+    <td class="num">${fmt((t.storage_cost+t.compute_cost)/days)}</td>
+    <td class="num">${fmt(t.total_cost/days)}</td>
   </tr>`;
 }
 
