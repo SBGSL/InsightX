@@ -680,22 +680,27 @@ async function openCustModal(customer) {
 /* ── Export CSV ── */
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
   if (!window._reportData) { alert('Load report first.'); return; }
-  const d = window._reportData;
+  const d    = window._reportData;
+  const days = d.dates.length || 1;
   const selected = d.table.filter(r => _selectedCustomers.has(r.customer));
   const others   = d.table.filter(r => !_selectedCustomers.has(r.customer));
-  const csvRows  = [...selected];
+  const csvRows  = selected.map(r => ({
+    ...r,
+    avg_gross: ((r.storage_cost + r.compute_cost) / days).toFixed(2),
+    avg_net:   (r.total_cost / days).toFixed(2),
+  }));
   if (others.length) {
     const oa = others.reduce((s,r) => s+r.storage_cost, 0);
     const ob = others.reduce((s,r) => s+r.compute_cost, 0);
     const oc = others.reduce((s,r) => s+r.platform_cost, 0);
     const od = oa+ob+oc;
     const gd = d.totals.total_cost;
-    csvRows.push({ customer: `Other Customers (${others.length})`, storage_cost: oa, pct_storage: gd?(oa/gd*100).toFixed(1):0, compute_cost: ob, pct_compute: gd?(ob/gd*100).toFixed(1):0, platform_cost: oc, pct_platform: gd?(oc/gd*100).toFixed(1):0, total_cost: od });
+    csvRows.push({ customer: `Other Customers (${others.length})`, storage_cost: oa, pct_storage: gd?(oa/gd*100).toFixed(1):0, compute_cost: ob, pct_compute: gd?(ob/gd*100).toFixed(1):0, platform_cost: oc, pct_platform: gd?(oc/gd*100).toFixed(1):0, total_cost: od, avg_gross: ((oa+ob)/days).toFixed(2), avg_net: (od/days).toFixed(2) });
   }
   const rows = [
-    ['Customer Name', 'A - Storage Cost (INR)', 'A %', 'B - Compute Cost (INR)', 'B %', 'C - Platform Cost (INR)', 'C %', 'D - Total Cost (INR)'],
-    ...csvRows.map(r => [r.customer, r.storage_cost, r.pct_storage+'%', r.compute_cost, r.pct_compute+'%', r.platform_cost, r.pct_platform+'%', r.total_cost]),
-    ['TOTAL', d.totals.storage_cost, d.totals.pct_storage+'%', d.totals.compute_cost, d.totals.pct_compute+'%', d.totals.platform_cost, d.totals.pct_platform+'%', d.totals.total_cost],
+    ['Customer Name', 'A - Storage Cost (INR)', 'A %', 'B - Compute Cost (INR)', 'B %', 'C - Platform Cost (INR)', 'C %', 'D - Total Cost (INR)', 'Avg Gross/Day (INR)', 'Avg Net/Day (INR)'],
+    ...csvRows.map(r => [r.customer, r.storage_cost, r.pct_storage+'%', r.compute_cost, r.pct_compute+'%', r.platform_cost, r.pct_platform+'%', r.total_cost, r.avg_gross, r.avg_net]),
+    ['TOTAL', d.totals.storage_cost, d.totals.pct_storage+'%', d.totals.compute_cost, d.totals.pct_compute+'%', d.totals.platform_cost, d.totals.pct_platform+'%', d.totals.total_cost, ((d.totals.storage_cost+d.totals.compute_cost)/days).toFixed(2), (d.totals.total_cost/days).toFixed(2)],
   ];
   const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
