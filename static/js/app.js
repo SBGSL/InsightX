@@ -503,7 +503,7 @@ function renderReportTable() {
   const tableRows = selected.map((r, i) => `
     <tr>
       <td>${i + 1}</td>
-      <td><strong>${esc(r.customer)}</strong></td>
+      <td><a class="cust-link" data-customer="${esc(r.customer)}" href="#">${esc(r.customer)}</a></td>
       <td class="num">${fmt(r.storage_cost)}</td>
       <td class="num pct">${r.pct_storage}%</td>
       <td class="num">${fmt(r.compute_cost)}</td>
@@ -575,6 +575,76 @@ async function loadReport() {
   buildCustomerFilter(data.table.map(r => r.customer));
   document.getElementById('reportTableWrap').style.display = 'block';
   renderReportTable();
+}
+
+/* ── Customer drill-down modal ── */
+let _custModalChart = null;
+
+document.getElementById('reportTable').addEventListener('click', e => {
+  const link = e.target.closest('.cust-link');
+  if (!link) return;
+  e.preventDefault();
+  openCustModal(link.dataset.customer);
+});
+
+document.getElementById('custModalClose').addEventListener('click', closeCustModal);
+document.getElementById('custModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('custModal')) closeCustModal();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCustModal(); });
+
+function closeCustModal() {
+  document.getElementById('custModal').classList.add('hidden');
+  if (_custModalChart) { _custModalChart.destroy(); _custModalChart = null; }
+  document.getElementById('custModalChart').style.display = 'none';
+  document.getElementById('custModalLoading').style.display = 'block';
+}
+
+async function openCustModal(customer) {
+  const from = document.getElementById('fromDate').value;
+  const to   = document.getElementById('toDate').value;
+
+  document.getElementById('custModalTitle').textContent = customer;
+  document.getElementById('custModalSub').textContent   = `Daily cost breakdown  •  ${from} → ${to}`;
+  document.getElementById('custModalLoading').style.display = 'block';
+  document.getElementById('custModalChart').style.display   = 'none';
+  document.getElementById('custModal').classList.remove('hidden');
+
+  const res  = await fetch(`/report/customer?customer=${encodeURIComponent(customer)}&from_date=${from}&to_date=${to}`);
+  const data = await res.json();
+
+  document.getElementById('custModalLoading').style.display = 'none';
+  const canvas = document.getElementById('custModalChart');
+  canvas.style.display = 'block';
+
+  if (_custModalChart) { _custModalChart.destroy(); _custModalChart = null; }
+
+  _custModalChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.date),
+      datasets: [
+        { label: 'A — Storage (INR)',  data: data.map(d => d.storage),  backgroundColor: 'rgba(251,146,60,0.85)',  borderRadius: 3 },
+        { label: 'B — Compute (INR)',  data: data.map(d => d.compute),  backgroundColor: 'rgba(79,142,247,0.85)',  borderRadius: 3 },
+        { label: 'C — Platform (INR)', data: data.map(d => d.platform), backgroundColor: 'rgba(139,92,246,0.85)', borderRadius: 3 },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ₹${ctx.parsed.y.toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2})}`,
+          }
+        }
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, ticks: { callback: v => '₹' + (v >= 1000 ? (v/1000).toFixed(1)+'k' : v) } },
+      },
+    },
+  });
 }
 
 /* ── Export CSV ── */

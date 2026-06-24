@@ -506,6 +506,60 @@ def report():
     })
 
 
+@app.route('/report/customer')
+def report_customer():
+    customer  = request.args.get('customer', '')
+    from_date = request.args.get('from_date')
+    to_date   = request.args.get('to_date')
+    if not customer or not from_date or not to_date:
+        return jsonify({'error': 'Missing params'}), 400
+
+    db  = get_db()
+    cur = get_cur(db)
+    cur.execute(
+        '''SELECT upload_date, type, cost_inr, resource
+           FROM daily_costs
+           WHERE upload_date >= %s AND upload_date <= %s
+           ORDER BY upload_date''',
+        (from_date, to_date)
+    )
+    rows  = cur.fetchall()
+    cur.close()
+
+    dates = sorted(set(r['upload_date'] for r in rows))
+
+    compute_by_date          = {}
+    platform_by_date         = {}
+    storage_by_customer_date = {}
+
+    for r in rows:
+        d = r['upload_date']
+        if r['type'] == 'Customer Attributed (Compute)':
+            compute_by_date[d] = compute_by_date.get(d, 0) + r['cost_inr']
+        elif r['type'] == 'Platform':
+            platform_by_date[d] = platform_by_date.get(d, 0) + r['cost_inr']
+        elif r['type'] == 'Customer Specific (Storage,Read/write)':
+            k = (r['resource'], d)
+            storage_by_customer_date[k] = storage_by_customer_date.get(k, 0) + r['cost_inr']
+
+    result = []
+    for d in dates:
+        s = storage_by_customer_date.get((customer, d), 0)
+        total_storage_day = sum(v for (_, dd), v in storage_by_customer_date.items() if dd == d)
+        ratio = s / total_storage_day if total_storage_day > 0 else 0
+        b = compute_by_date.get(d, 0) * ratio
+        c = platform_by_date.get(d, 0) * ratio
+        result.append({
+            'date':     d,
+            'storage':  round(s, 2),
+            'compute':  round(b, 2),
+            'platform': round(c, 2),
+            'total':    round(s + b + c, 2),
+        })
+
+    return jsonify(result)
+
+
 @app.route('/history')
 def history():
     db  = get_db()
