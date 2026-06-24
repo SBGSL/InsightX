@@ -119,6 +119,21 @@
         </div>
       </div>
 
+      <!-- Instance type tagging for new customers -->
+      <div id="instanceTypeCard" class="card hidden">
+        <div class="card-header">
+          <h2>Tag Instance Type</h2>
+          <span id="untaggedCount" class="badge badge-orange"></span>
+        </div>
+        <p class="muted">New customers found with no Instance Type. Please tag each before committing.</p>
+        <div class="table-wrap">
+          <table id="instanceTypeTable">
+            <thead><tr><th>Customer Name</th><th>Instance Type</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Commit button when no manual needed -->
       <div id="commitCard" class="card hidden">
         <div class="card-header">

@@ -118,11 +118,17 @@ uploadBtn.addEventListener('click', async () => {
     datesSummary.textContent = `Detected ${data.dates.length} date(s) in file: ${data.dates.join(', ')}`;
     datesSummary.classList.remove('hidden');
 
+    state.distinctInstanceTypes = data.distinct_instance_types || ['Live','Offline','Demo','POC','QA','Deboarded'];
+
     renderAutoClassified(data.classified);
     if (data.unclassified.length > 0) {
       renderManual(data.unclassified);
     } else {
       show('commitCard');
+    }
+
+    if (data.untagged_customers && data.untagged_customers.length > 0) {
+      renderInstanceTypeCard(data.untagged_customers, state.distinctInstanceTypes);
     }
   } catch (e) {
     hide('processing');
@@ -201,6 +207,43 @@ function renderManual(rows) {
   show('manualCard');
 }
 
+/* ── Instance type tagging ── */
+function renderInstanceTypeCard(customers, types) {
+  document.getElementById('untaggedCount').textContent = customers.length + ' new';
+  const tbody = document.querySelector('#instanceTypeTable tbody');
+  const opts  = types.map(t => `<option value="${t}">${t}</option>`).join('');
+  tbody.innerHTML = customers.map(c => `
+    <tr>
+      <td>${esc(c)}</td>
+      <td>
+        <select class="type-select it-select" data-customer="${esc(c)}">
+          <option value="">— Select Type —</option>
+          ${opts}
+        </select>
+      </td>
+    </tr>`).join('');
+  show('instanceTypeCard');
+}
+
+async function saveInstanceTypes() {
+  const selects = document.querySelectorAll('.it-select');
+  if (!selects.length) return true;
+  let missing = false;
+  const items = [];
+  selects.forEach(sel => {
+    if (!sel.value) { missing = true; sel.classList.add('unset'); }
+    else items.push({ customer_name: sel.dataset.customer, instance_type: sel.value });
+  });
+  if (missing) { alert('Please tag the instance type for all new customers.'); return false; }
+  await fetch('/instance-types', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(items),
+  });
+  hide('instanceTypeCard');
+  return true;
+}
+
 /* ── Save manual classifications ── */
 document.getElementById('saveClassBtn').addEventListener('click', async () => {
   const selects = document.querySelectorAll('#manualTable .type-select');
@@ -229,6 +272,9 @@ document.getElementById('saveClassBtn').addEventListener('click', async () => {
     body: JSON.stringify({ session_id: state.sessionId, selections }),
   });
 
+  const itOk = await saveInstanceTypes();
+  if (!itOk) return;
+
   const ok = await commitRows(allRows);
   if (!ok) return;
 
@@ -241,6 +287,8 @@ document.getElementById('saveClassBtn').addEventListener('click', async () => {
 
 /* ── Commit auto-only ── */
 document.getElementById('commitOnlyBtn').addEventListener('click', async () => {
+  const itOk = await saveInstanceTypes();
+  if (!itOk) return;
   const ok = await commitRows(state.classifiedRows);
   if (!ok) return;
   show('successBanner');
@@ -492,6 +540,8 @@ document.addEventListener('click', e => {
   }
 });
 
+const IT_ORDER = ['Live','Offline','Demo','POC','QA','Deboarded','Unknown'];
+
 function renderReportTable() {
   const data = window._reportData;
   if (!data) return;
@@ -501,23 +551,70 @@ function renderReportTable() {
   const days     = data.dates.length || 1;
   const grandD   = data.totals.total_cost;
 
-  const tableRows = selected.map((r, i) => {
-    const avgGross = (r.storage_cost + r.compute_cost) / days;
-    const avgNet   = r.total_cost / days;
-    return `
-    <tr>
-      <td>${i + 1}</td>
-      <td><a class="cust-link" data-customer="${esc(r.customer)}" href="#">${esc(r.customer)}</a></td>
-      <td class="num">${fmt(r.storage_cost)}</td>
-      <td class="num pct">${r.pct_storage}%</td>
-      <td class="num">${fmt(r.compute_cost)}</td>
-      <td class="num pct">${r.pct_compute}%</td>
-      <td class="num">${fmt(r.platform_cost)}</td>
-      <td class="num pct">${r.pct_platform}%</td>
-      <td class="num"><strong>${fmt(r.total_cost)}</strong></td>
-      <td class="num">${fmt(avgGross)}</td>
-      <td class="num">${fmt(avgNet)}</td>
-    </tr>`;
+  // Group selected rows by instance_type
+  const groups = {};
+  selected.forEach(r => {
+    const it = r.instance_type || 'Unknown';
+    if (!groups[it]) groups[it] = [];
+    groups[it].push(r);
+  });
+
+  const tableRows = [];
+  let globalIdx = 1;
+
+  IT_ORDER.forEach(it => {
+    const grp = groups[it];
+    if (!grp || !grp.length) return;
+
+    // Subtotals for this group
+    const gA = grp.reduce((s,r) => s + r.storage_cost,  0);
+    const gB = grp.reduce((s,r) => s + r.compute_cost,  0);
+    const gC = grp.reduce((s,r) => s + r.platform_cost, 0);
+    const gD = gA + gB + gC;
+
+    // Group header row
+    tableRows.push(`
+      <tr class="it-group-row">
+        <td colspan="11">
+          <span class="it-badge it-badge-${it.toLowerCase()}">${it}</span>
+          <span class="it-group-meta">${grp.length} customer${grp.length>1?'s':''} &nbsp;·&nbsp; ₹${fmt(gD)}</span>
+        </td>
+      </tr>`);
+
+    // Customer rows
+    grp.forEach(r => {
+      const avgGross = (r.storage_cost + r.compute_cost) / days;
+      const avgNet   = r.total_cost / days;
+      tableRows.push(`
+        <tr>
+          <td>${globalIdx++}</td>
+          <td><a class="cust-link" data-customer="${esc(r.customer)}" href="#">${esc(r.customer)}</a></td>
+          <td class="num">${fmt(r.storage_cost)}</td>
+          <td class="num pct">${r.pct_storage}%</td>
+          <td class="num">${fmt(r.compute_cost)}</td>
+          <td class="num pct">${r.pct_compute}%</td>
+          <td class="num">${fmt(r.platform_cost)}</td>
+          <td class="num pct">${r.pct_platform}%</td>
+          <td class="num"><strong>${fmt(r.total_cost)}</strong></td>
+          <td class="num">${fmt(avgGross)}</td>
+          <td class="num">${fmt(avgNet)}</td>
+        </tr>`);
+    });
+
+    // Subtotal row for group
+    tableRows.push(`
+      <tr class="it-subtotal-row">
+        <td colspan="2"><strong>${it} Subtotal</strong></td>
+        <td class="num">${fmt(gA)}</td>
+        <td class="num pct">${grandD?(gA/grandD*100).toFixed(1):0}%</td>
+        <td class="num">${fmt(gB)}</td>
+        <td class="num pct">${grandD?(gB/grandD*100).toFixed(1):0}%</td>
+        <td class="num">${fmt(gC)}</td>
+        <td class="num pct">${grandD?(gC/grandD*100).toFixed(1):0}%</td>
+        <td class="num"><strong>${fmt(gD)}</strong></td>
+        <td class="num">${fmt((gA+gB)/days)}</td>
+        <td class="num">${fmt(gD/days)}</td>
+      </tr>`);
   });
 
   if (others.length) {

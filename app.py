@@ -82,6 +82,40 @@ def init_db():
         )
     ''')
     cur.execute('''
+        CREATE TABLE IF NOT EXISTS customer_instance_type (
+            customer_name TEXT PRIMARY KEY,
+            instance_type TEXT NOT NULL DEFAULT 'Live'
+        )
+    ''')
+    # Seed master instance type data if table is empty
+    cur.execute('SELECT COUNT(*) FROM customer_instance_type')
+    if cur.fetchone()[0] == 0:
+        seed = [
+            ('kathiawarstores','Live'),('mskccreationsfabrics','Live'),
+            ('chaudharilifa3za4p','Live'),('gazalguptatpaxblqy','Live'),
+            ('mssanspareilsgreenlands','Live'),('naranggarments','Live'),
+            ('punjabclothstore','Live'),('houseofanitadongre','Offline'),
+            ('vaarahisilks','Live'),('salesdemojio','Demo'),
+            ('rasasilver','Live'),('panchananinternational','POC'),
+            ('kathiawarstorestest','Offline'),('popeesbabycare','Offline'),
+            ('ginnisystemsltd','Demo'),('qaginesysjio','QA'),
+            ('kapsepaithanp0g34r','Live'),('ethniqretail','Offline'),
+            ('browntapetestjio','QA'),('browntapeginesysqajio','QA'),
+            ('ginnijiozwing','QA'),('browntapetest8264jio','QA'),
+            ('browntapetest8127jio','QA'),('mahendrazwingjio','QA'),
+            ('balajihosieryxlu','Deboarded'),('mskambalgharexclusive','Deboarded'),
+            ('nmfrontierukltd','Deboarded'),('nidhidecor','Deboarded'),
+            ('bmrarnikasilverjewellery','Deboarded'),('tiramisuretails','Deboarded'),
+            ('nohmapparelsllp','Deboarded'),('ginniginnijio','QA'),
+            ('vastramayprivatelimited','Deboarded'),('mahendramongodbjio','QA'),
+            ('whiteroutetechnologies','Deboarded'),('bivaginesysjiotfstate','QA'),
+            ('sparkhistoryserver','QA'),('bivaginesysdata4jio','QA'),
+        ]
+        cur.executemany(
+            'INSERT INTO customer_instance_type (customer_name, instance_type) VALUES (%s,%s) ON CONFLICT DO NOTHING',
+            seed
+        )
+    cur.execute('''
         CREATE INDEX IF NOT EXISTS idx_daily_costs_date ON daily_costs(upload_date)
     ''')
     conn.commit()
@@ -326,14 +360,33 @@ def _upload():
         )
         db.commit()
 
+    # Find customers (storage accounts) not yet in instance type master
+    storage_customers = set(
+        r['resource'] for r in classified
+        if r.get('type') == 'Customer Specific (Storage,Read/write)'
+    )
+    it_map_cur = get_cur(db)
+    it_map_cur.execute('SELECT customer_name FROM customer_instance_type')
+    known_customers = {row['customer_name'] for row in it_map_cur.fetchall()}
+    it_map_cur.close()
+    untagged_customers = sorted(storage_customers - known_customers)
+
+    # Fetch distinct instance types for the dropdown
+    it_types_cur = get_cur(db)
+    it_types_cur.execute('SELECT DISTINCT instance_type FROM customer_instance_type ORDER BY instance_type')
+    distinct_instance_types = [row['instance_type'] for row in it_types_cur.fetchall()]
+    it_types_cur.close()
+
     cur.close()
     return jsonify({
-        'session_id':       session_id,
-        'dates':            all_dates,
-        'classified_count': len(classified),
-        'unclassified':     unclassified,
-        'classified':       classified,
-        'existing_by_date': existing_by_date,
+        'session_id':             session_id,
+        'dates':                  all_dates,
+        'classified_count':       len(classified),
+        'unclassified':           unclassified,
+        'classified':             classified,
+        'existing_by_date':       existing_by_date,
+        'untagged_customers':     untagged_customers,
+        'distinct_instance_types': distinct_instance_types,
     })
 
 
@@ -387,6 +440,35 @@ def commit():
     db.commit()
     cur.close()
     return jsonify({'committed': len(rows), 'dates': sorted(dates_in_batch)})
+
+
+@app.route('/instance-types', methods=['GET'])
+def get_instance_types():
+    db  = get_db()
+    cur = get_cur(db)
+    cur.execute('SELECT DISTINCT instance_type FROM customer_instance_type ORDER BY instance_type')
+    types = [row['instance_type'] for row in cur.fetchall()]
+    cur.close()
+    return jsonify(types)
+
+
+@app.route('/instance-types', methods=['POST'])
+def set_instance_types():
+    items = request.json  # [{customer_name, instance_type}, ...]
+    if not items:
+        return jsonify({'ok': True})
+    db  = get_db()
+    cur = get_cur(db)
+    for item in items:
+        cur.execute(
+            '''INSERT INTO customer_instance_type (customer_name, instance_type)
+               VALUES (%s, %s)
+               ON CONFLICT (customer_name) DO UPDATE SET instance_type = EXCLUDED.instance_type''',
+            (item['customer_name'], item['instance_type'])
+        )
+    db.commit()
+    cur.close()
+    return jsonify({'ok': True, 'saved': len(items)})
 
 
 @app.route('/available-dates')
@@ -449,6 +531,12 @@ def report():
             'platform': round(platform_by_date.get(d, 0), 2),
         })
 
+    # Load instance type map
+    it_cur = get_cur(db)
+    it_cur.execute('SELECT customer_name, instance_type FROM customer_instance_type')
+    it_map = {row['customer_name']: row['instance_type'] for row in it_cur.fetchall()}
+    it_cur.close()
+
     customers = sorted(set(k[0] for k in storage_by_customer_date.keys()))
     table = []
     for customer in customers:
@@ -471,17 +559,18 @@ def report():
         b = round(total_compute, 2)
         c = round(total_platform, 2)
         table.append({
-            'customer':      customer,
-            'storage_cost':  a,
-            'compute_cost':  b,
-            'platform_cost': c,
-            'total_cost':    total,
-            'pct_storage':   round(a / total * 100, 1) if total else 0,
-            'pct_compute':   round(b / total * 100, 1) if total else 0,
-            'pct_platform':  round(c / total * 100, 1) if total else 0,
+            'customer':       customer,
+            'instance_type':  it_map.get(customer, 'Unknown'),
+            'storage_cost':   a,
+            'compute_cost':   b,
+            'platform_cost':  c,
+            'total_cost':     total,
+            'pct_storage':    round(a / total * 100, 1) if total else 0,
+            'pct_compute':    round(b / total * 100, 1) if total else 0,
+            'pct_platform':   round(c / total * 100, 1) if total else 0,
         })
 
-    table.sort(key=lambda x: -x['total_cost'])
+    table.sort(key=lambda x: (-x['total_cost'],))
 
     grand_a = round(sum(r['storage_cost']  for r in table), 2)
     grand_b = round(sum(r['compute_cost']  for r in table), 2)
