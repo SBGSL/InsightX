@@ -5,7 +5,6 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('view-' + btn.dataset.view).classList.add('active');
-    if (btn.dataset.view === 'report') { loadAvailableDates(); }
     if (btn.dataset.view === 'history') loadHistory();
   });
 });

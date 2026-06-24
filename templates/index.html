@@ -17,17 +17,17 @@
       <span class="logo-text">InsightX</span>
     </div>
     <nav>
-      <button class="nav-btn active" data-view="upload">
-        <svg viewBox="0 0 24 24"><path d="M19 13v6H5v-6H3v6a2 2 0 002 2h14a2 2 0 002-2v-6h-2zm-7-9l-4 4h3v8h2V8h3l-4-4z"/></svg>
-        Upload
-      </button>
-      <button class="nav-btn" data-view="report">
+      <button class="nav-btn active" data-view="report">
         <svg viewBox="0 0 24 24"><path d="M9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4zm2 2H5V5h14v14zm0-16H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2z"/></svg>
         Report
       </button>
       <button class="nav-btn" data-view="history">
         <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 017-7 7 7 0 110 14 6.99 6.99 0 01-4.95-2.05l-1.41 1.41A8.99 8.99 0 0013 21a9 9 0 000-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
         History
+      </button>
+      <button class="nav-btn" data-view="upload">
+        <svg viewBox="0 0 24 24"><path d="M19 13v6H5v-6H3v6a2 2 0 002 2h14a2 2 0 002-2v-6h-2zm-7-9l-4 4h3v8h2V8h3l-4-4z"/></svg>
+        Upload
       </button>
     </nav>
   </aside>
@@ -36,7 +36,7 @@
   <main class="main">
 
     <!-- ── UPLOAD VIEW ── -->
-    <section id="view-upload" class="view active">
+    <section id="view-upload" class="view">
       <div class="page-header">
         <h1>Upload Daily Cost Sheet</h1>
         <p>Upload the Azure cost Excel export. Resources will be auto-classified where possible.</p>
@@ -138,7 +138,7 @@
     </section>
 
     <!-- ── REPORT VIEW ── -->
-    <section id="view-report" class="view">
+    <section id="view-report" class="view active">
       <div class="page-header">
         <h1>Customer Cost Report</h1>
         <p>Apportioned compute cost + direct storage cost per customer.</p>
