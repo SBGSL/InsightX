@@ -133,7 +133,9 @@ tfoot td { font-weight: 700; border-top: 2px solid #e5e7eb; padding: 10px 12px; 
 
 #reportTableWrap { overflow-x: visible; }
 #reportTable { table-layout: fixed; width: 100%; }
-#reportTable th, #reportTable td { overflow: hidden; text-overflow: ellipsis; }
+#reportTable th, #reportTable td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#reportTable th:nth-child(1), #reportTable td:nth-child(1) { width: 36px; }
+#reportTable th:nth-child(2), #reportTable td:nth-child(2) { width: 17%; }
 
 /* ── Misc ── */
 .muted { color: #6b7280; }
