@@ -300,17 +300,12 @@ tbody tr:nth-child(even):hover { background: #f3f4f6; }
   color: #6b7280; text-transform: uppercase; letter-spacing: .4px;
   border-bottom: 1px solid #e2e8f0;
   white-space: nowrap;
-  text-align: right;
 }
-.hist-date-table th:first-child { text-align: left; }
 .hist-date-table td {
   padding: 9px 16px;
   border-bottom: 1px solid #e2e8f0;
   color: #374151;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
 }
-.hist-date-table td:first-child { text-align: left; }
 .hist-date-table tr:last-child td { border-bottom: none; }
 .hist-date-table tbody tr:hover td { background: #eff6ff; }
 

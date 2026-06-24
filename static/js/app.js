@@ -670,10 +670,10 @@ async function toggleHistoryMonth(month, row) {
     <table class="hist-date-table">
       <thead><tr>
         <th>Date</th>
-        <th>A — Storage (INR)</th>
-        <th>B — Compute (INR)</th>
-        <th>C — Platform (INR)</th>
-        <th>D — Total (INR)</th>
+        <th class="num">A — Storage (INR)</th>
+        <th class="num">B — Compute (INR)</th>
+        <th class="num">C — Platform (INR)</th>
+        <th class="num">D — Total (INR)</th>
         <th></th>
       </tr></thead>
       <tbody>
