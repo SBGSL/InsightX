@@ -17,17 +17,17 @@
       <span class="logo-text">InsightX</span>
     </div>
     <nav>
-      <button class="nav-btn active" data-view="upload">
-        <svg viewBox="0 0 24 24"><path d="M19 13v6H5v-6H3v6a2 2 0 002 2h14a2 2 0 002-2v-6h-2zm-7-9l-4 4h3v8h2V8h3l-4-4z"/></svg>
-        Upload
-      </button>
-      <button class="nav-btn" data-view="report">
+      <button class="nav-btn active" data-view="report">
         <svg viewBox="0 0 24 24"><path d="M9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4zm2 2H5V5h14v14zm0-16H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2z"/></svg>
         Report
       </button>
       <button class="nav-btn" data-view="history">
         <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 017-7 7 7 0 110 14 6.99 6.99 0 01-4.95-2.05l-1.41 1.41A8.99 8.99 0 0013 21a9 9 0 000-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
         History
+      </button>
+      <button class="nav-btn" data-view="upload">
+        <svg viewBox="0 0 24 24"><path d="M19 13v6H5v-6H3v6a2 2 0 002 2h14a2 2 0 002-2v-6h-2zm-7-9l-4 4h3v8h2V8h3l-4-4z"/></svg>
+        Upload
       </button>
     </nav>
   </aside>
@@ -36,7 +36,7 @@
   <main class="main">
 
     <!-- ── UPLOAD VIEW ── -->
-    <section id="view-upload" class="view active">
+    <section id="view-upload" class="view">
       <div class="page-header">
         <h1>Upload Daily Cost Sheet</h1>
         <p>Upload the Azure cost Excel export. Resources will be auto-classified where possible.</p>
@@ -61,8 +61,33 @@
 
       <!-- Processing indicator -->
       <div id="processing" class="card hidden">
-        <div class="spinner"></div>
-        <p>Processing file…</p>
+        <div class="progress-steps">
+          <div class="progress-step" id="step-upload">
+            <div class="step-icon step-active">1</div>
+            <div class="step-label">Uploading file</div>
+          </div>
+          <div class="progress-step-line"></div>
+          <div class="progress-step" id="step-parse">
+            <div class="step-icon step-waiting">2</div>
+            <div class="step-label">Parsing Excel</div>
+          </div>
+          <div class="progress-step-line"></div>
+          <div class="progress-step" id="step-classify">
+            <div class="step-icon step-waiting">3</div>
+            <div class="step-label">Classifying resources</div>
+          </div>
+          <div class="progress-step-line"></div>
+          <div class="progress-step" id="step-done">
+            <div class="step-icon step-waiting">4</div>
+            <div class="step-label">Done</div>
+          </div>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progressBarFill"></div>
+          </div>
+          <div class="progress-bar-label" id="progressBarLabel">Uploading…</div>
+        </div>
       </div>
 
       <!-- Classification summary -->
@@ -94,6 +119,21 @@
         </div>
       </div>
 
+      <!-- Instance type tagging for new customers -->
+      <div id="instanceTypeCard" class="card hidden">
+        <div class="card-header">
+          <h2>Tag Instance Type</h2>
+          <span id="untaggedCount" class="badge badge-orange"></span>
+        </div>
+        <p class="muted">New customers found with no Instance Type. Please tag each before committing.</p>
+        <div class="table-wrap">
+          <table id="instanceTypeTable">
+            <thead><tr><th>Customer Name</th><th>Instance Type</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Commit button when no manual needed -->
       <div id="commitCard" class="card hidden">
         <div class="card-header">
@@ -113,21 +153,10 @@
     </section>
 
     <!-- ── REPORT VIEW ── -->
-    <section id="view-report" class="view">
+    <section id="view-report" class="view active">
       <div class="page-header">
         <h1>Customer Cost Report</h1>
         <p>Apportioned compute cost + direct storage cost per customer.</p>
-      </div>
-
-      <!-- Available dates -->
-      <div class="card" id="availableDatesCard">
-        <div class="card-header">
-          <h2>Available Dates</h2>
-          <span id="datesCount" class="badge badge-green"></span>
-          <button class="btn btn-outline" style="margin-left:auto;padding:5px 12px;font-size:12px" onclick="loadAvailableDates()">↺ Refresh</button>
-        </div>
-        <div id="dateChips" class="date-chips"></div>
-        <div id="datesEmpty" class="empty-state hidden">No data uploaded yet. Go to Upload tab to add data.</div>
       </div>
 
       <!-- Report -->
@@ -152,7 +181,34 @@
 
         <!-- Stacked bar chart -->
         <div id="chartWrap" style="display:none; margin-bottom:28px;">
+          <div class="chart-toggles">
+            <label class="chart-toggle"><input type="checkbox" id="chkStorage" checked> <span class="ct-dot ct-storage"></span> A — Storage</label>
+            <label class="chart-toggle"><input type="checkbox" id="chkCompute" checked> <span class="ct-dot ct-compute"></span> B — Compute</label>
+            <label class="chart-toggle"><input type="checkbox" id="chkPlatform" checked> <span class="ct-dot ct-platform"></span> C — Platform</label>
+          </div>
           <canvas id="costChart" height="100"></canvas>
+        </div>
+
+        <!-- Customer filter — compact dropdown -->
+        <div id="customerFilterPanel" style="display:none; margin-bottom:16px; position:relative;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:12.5px;font-weight:500;color:#374151;white-space:nowrap;">Customers:</span>
+            <button id="custFilterBtn" class="btn btn-outline" style="display:flex;align-items:center;gap:8px;min-width:180px;">
+              <span id="custFilterCount">All</span>
+              <span style="margin-left:auto;font-size:11px;color:#9ca3af;">▾</span>
+            </button>
+          </div>
+          <!-- dropdown panel -->
+          <div id="custDropdown" class="cust-dropdown hidden">
+            <div class="cust-dd-search">
+              <input id="custSearch" type="text" placeholder="Search customers…" autocomplete="off"/>
+            </div>
+            <div class="cust-dd-actions">
+              <button id="custSelectAll" class="cust-dd-act">Select All</button>
+              <button id="custClearAll"  class="cust-dd-act">Clear All</button>
+            </div>
+            <div id="custCheckList" class="cust-dd-list"></div>
+          </div>
         </div>
 
         <div class="table-wrap" id="reportTableWrap" style="display:none">
@@ -160,9 +216,15 @@
             <thead><tr>
               <th>#</th>
               <th>Customer Name</th>
-              <th>A — Storage Cost (INR)</th>
-              <th>B — Compute Cost Apportioned (INR)</th>
-              <th>Total Cost (INR)</th>
+              <th class="num">A — Storage (INR)</th>
+              <th class="num pct">A %</th>
+              <th class="num">B — Compute (INR)</th>
+              <th class="num pct">B %</th>
+              <th class="num">C — Platform (INR)</th>
+              <th class="num pct">C %</th>
+              <th class="num">D — Total (INR)</th>
+              <th class="num">Avg Gross/Day</th>
+              <th class="num">Avg Net/Day</th>
             </tr></thead>
             <tbody></tbody>
             <tfoot></tfoot>
@@ -176,13 +238,20 @@
     <section id="view-history" class="view">
       <div class="page-header">
         <h1>Upload History</h1>
-        <p>All dates for which cost data has been committed.</p>
+        <p>Month-wise cost breakdown. Click a month to expand date detail and top-10 chart.</p>
       </div>
       <div class="card">
         <div class="table-wrap">
           <table id="historyTable">
-            <thead><tr><th>Date</th><th>Resources</th><th>Total Cost (INR)</th></tr></thead>
-            <tbody></tbody>
+            <thead><tr>
+              <th></th>
+              <th>Month</th>
+              <th class="num">A — Storage (INR)</th>
+              <th class="num">B — Compute (INR)</th>
+              <th class="num">C — Platform (INR)</th>
+              <th class="num">D — Total (INR)</th>
+            </tr></thead>
+            <tbody id="historyTbody"></tbody>
           </table>
         </div>
         <div id="historyEmpty" class="empty-state hidden">No uploads yet.</div>
@@ -190,6 +259,24 @@
     </section>
 
   </main>
+</div>
+
+<!-- Customer drill-down modal -->
+<div id="custModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="custModalTitle"></div>
+        <div class="modal-sub" id="custModalSub"></div>
+      </div>
+      <button class="modal-close" id="custModalClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="custModalLoading" class="modal-loading">Loading…</div>
+      <div id="custModalStats" class="modal-stats" style="display:none"></div>
+      <canvas id="custModalChart" height="130" style="display:none"></canvas>
+    </div>
+  </div>
 </div>
 
 <script src="/static/js/app.js"></script>

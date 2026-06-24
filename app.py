@@ -82,6 +82,40 @@ def init_db():
         )
     ''')
     cur.execute('''
+        CREATE TABLE IF NOT EXISTS customer_instance_type (
+            customer_name TEXT PRIMARY KEY,
+            instance_type TEXT NOT NULL DEFAULT 'Live'
+        )
+    ''')
+    # Seed master instance type data if table is empty
+    cur.execute('SELECT COUNT(*) FROM customer_instance_type')
+    if cur.fetchone()[0] == 0:
+        seed = [
+            ('kathiawarstores','Live'),('mskccreationsfabrics','Live'),
+            ('chaudharilifa3za4p','Live'),('gazalguptatpaxblqy','Live'),
+            ('mssanspareilsgreenlands','Live'),('naranggarments','Live'),
+            ('punjabclothstore','Live'),('houseofanitadongre','Offline'),
+            ('vaarahisilks','Live'),('salesdemojio','Demo'),
+            ('rasasilver','Live'),('panchananinternational','POC'),
+            ('kathiawarstorestest','Offline'),('popeesbabycare','Offline'),
+            ('ginnisystemsltd','Demo'),('qaginesysjio','QA'),
+            ('kapsepaithanp0g34r','Live'),('ethniqretail','Offline'),
+            ('browntapetestjio','QA'),('browntapeginesysqajio','QA'),
+            ('ginnijiozwing','QA'),('browntapetest8264jio','QA'),
+            ('browntapetest8127jio','QA'),('mahendrazwingjio','QA'),
+            ('balajihosieryxlu','Deboarded'),('mskambalgharexclusive','Deboarded'),
+            ('nmfrontierukltd','Deboarded'),('nidhidecor','Deboarded'),
+            ('bmrarnikasilverjewellery','Deboarded'),('tiramisuretails','Deboarded'),
+            ('nohmapparelsllp','Deboarded'),('ginniginnijio','QA'),
+            ('vastramayprivatelimited','Deboarded'),('mahendramongodbjio','QA'),
+            ('whiteroutetechnologies','Deboarded'),('bivaginesysjiotfstate','QA'),
+            ('sparkhistoryserver','QA'),('bivaginesysdata4jio','QA'),
+        ]
+        cur.executemany(
+            'INSERT INTO customer_instance_type (customer_name, instance_type) VALUES (%s,%s) ON CONFLICT DO NOTHING',
+            seed
+        )
+    cur.execute('''
         CREATE INDEX IF NOT EXISTS idx_daily_costs_date ON daily_costs(upload_date)
     ''')
     conn.commit()
@@ -122,14 +156,17 @@ PLATFORM_TYPES = {
 def normalize_resource_type(rt: str) -> str:
     return AZURE_PROVIDER_TYPE_MAP.get(rt.strip().lower(), rt.strip())
 
-def classify_resource(resource: str, resource_azure_type: str, resource_group: str, db) -> str | None:
-    key = resource.strip().lower()
+def load_type_map(db) -> dict:
     cur = get_cur(db)
-    cur.execute('SELECT type FROM resource_type_map WHERE resource_key = %s', (key,))
-    row = cur.fetchone()
+    cur.execute('SELECT resource_key, type FROM resource_type_map')
+    result = {row['resource_key']: row['type'] for row in cur.fetchall()}
     cur.close()
-    if row:
-        return row['type']
+    return result
+
+def classify_resource(resource: str, resource_azure_type: str, resource_group: str, type_map: dict) -> str | None:
+    key = resource.strip().lower()
+    if key in type_map:
+        return type_map[key]
 
     rt   = normalize_resource_type(resource_azure_type or '')
     name = key
@@ -255,6 +292,7 @@ def upload():
         return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
 def _upload():
+    import io
     file       = request.files.get('file')
     session_id = request.form.get('session_id') or datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
 
@@ -262,7 +300,8 @@ def _upload():
         return jsonify({'error': 'No file provided'}), 400
 
     try:
-        wb = openpyxl.load_workbook(file, data_only=True)
+        file_bytes = io.BytesIO(file.read())
+        wb = openpyxl.load_workbook(file_bytes, data_only=True)
         ws = wb.active
     except Exception as e:
         return jsonify({'error': f'Cannot read file: {e}'}), 400
@@ -275,14 +314,15 @@ def _upload():
     if not raw_rows:
         return jsonify({'error': 'No data rows found in file. Check the file format.'}), 400
 
-    db = get_db()
+    db       = get_db()
+    type_map = load_type_map(db)
     classified   = []
     unclassified = []
 
     for row in raw_rows:
         resource    = row['resource']
         upload_date = row.get('file_date') or date.today().isoformat()
-        t = classify_resource(resource, row['resource_type'], row['resource_group'], db)
+        t = classify_resource(resource, row['resource_type'], row['resource_group'], type_map)
         entry = {**row, 'upload_date': upload_date}
         entry.pop('file_date', None)
         if t:
@@ -320,14 +360,33 @@ def _upload():
         )
         db.commit()
 
+    # Find customers (storage accounts) not yet in instance type master
+    storage_customers = set(
+        r['resource'] for r in classified
+        if r.get('type') == 'Customer Specific (Storage,Read/write)'
+    )
+    it_map_cur = get_cur(db)
+    it_map_cur.execute('SELECT customer_name FROM customer_instance_type')
+    known_customers = {row['customer_name'] for row in it_map_cur.fetchall()}
+    it_map_cur.close()
+    untagged_customers = sorted(storage_customers - known_customers)
+
+    # Fetch distinct instance types for the dropdown
+    it_types_cur = get_cur(db)
+    it_types_cur.execute('SELECT DISTINCT instance_type FROM customer_instance_type ORDER BY instance_type')
+    distinct_instance_types = [row['instance_type'] for row in it_types_cur.fetchall()]
+    it_types_cur.close()
+
     cur.close()
     return jsonify({
-        'session_id':       session_id,
-        'dates':            all_dates,
-        'classified_count': len(classified),
-        'unclassified':     unclassified,
-        'classified':       classified,
-        'existing_by_date': existing_by_date,
+        'session_id':             session_id,
+        'dates':                  all_dates,
+        'classified_count':       len(classified),
+        'unclassified':           unclassified,
+        'classified':             classified,
+        'existing_by_date':       existing_by_date,
+        'untagged_customers':     untagged_customers,
+        'distinct_instance_types': distinct_instance_types,
     })
 
 
@@ -383,6 +442,35 @@ def commit():
     return jsonify({'committed': len(rows), 'dates': sorted(dates_in_batch)})
 
 
+@app.route('/instance-types', methods=['GET'])
+def get_instance_types():
+    db  = get_db()
+    cur = get_cur(db)
+    cur.execute('SELECT DISTINCT instance_type FROM customer_instance_type ORDER BY instance_type')
+    types = [row['instance_type'] for row in cur.fetchall()]
+    cur.close()
+    return jsonify(types)
+
+
+@app.route('/instance-types', methods=['POST'])
+def set_instance_types():
+    items = request.json  # [{customer_name, instance_type}, ...]
+    if not items:
+        return jsonify({'ok': True})
+    db  = get_db()
+    cur = get_cur(db)
+    for item in items:
+        cur.execute(
+            '''INSERT INTO customer_instance_type (customer_name, instance_type)
+               VALUES (%s, %s)
+               ON CONFLICT (customer_name) DO UPDATE SET instance_type = EXCLUDED.instance_type''',
+            (item['customer_name'], item['instance_type'])
+        )
+    db.commit()
+    cur.close()
+    return jsonify({'ok': True, 'saved': len(items)})
+
+
 @app.route('/available-dates')
 def available_dates():
     db  = get_db()
@@ -419,13 +507,16 @@ def report():
 
     dates = sorted(set(r['upload_date'] for r in rows))
 
-    compute_by_date         = {}
+    compute_by_date          = {}
+    platform_by_date         = {}
     storage_by_customer_date = {}
 
     for r in rows:
         d = r['upload_date']
         if r['type'] == 'Customer Attributed (Compute)':
             compute_by_date[d] = compute_by_date.get(d, 0) + r['cost_inr']
+        elif r['type'] == 'Platform':
+            platform_by_date[d] = platform_by_date.get(d, 0) + r['cost_inr']
         elif r['type'] == 'Customer Specific (Storage,Read/write)':
             k = (r['resource'], d)
             storage_by_customer_date[k] = storage_by_customer_date.get(k, 0) + r['cost_inr']
@@ -434,33 +525,57 @@ def report():
     for d in dates:
         storage_total = sum(v for (_, dd), v in storage_by_customer_date.items() if dd == d)
         daily_chart.append({
-            'date':    d,
-            'storage': round(storage_total, 2),
-            'compute': round(compute_by_date.get(d, 0), 2),
+            'date':     d,
+            'storage':  round(storage_total, 2),
+            'compute':  round(compute_by_date.get(d, 0), 2),
+            'platform': round(platform_by_date.get(d, 0), 2),
         })
+
+    # Load instance type map
+    it_cur = get_cur(db)
+    it_cur.execute('SELECT customer_name, instance_type FROM customer_instance_type')
+    it_map = {row['customer_name']: row['instance_type'] for row in it_cur.fetchall()}
+    it_cur.close()
 
     customers = sorted(set(k[0] for k in storage_by_customer_date.keys()))
     table = []
     for customer in customers:
-        total_storage = 0
-        total_compute_apportioned = 0
+        total_storage  = 0
+        total_compute  = 0
+        total_platform = 0
         for d in dates:
-            s             = storage_by_customer_date.get((customer, d), 0)
+            s = storage_by_customer_date.get((customer, d), 0)
             total_storage += s
-            total_compute = compute_by_date.get(d, 0)
-            total_storage_day = sum(
-                v for (_, dd), v in storage_by_customer_date.items() if dd == d
-            )
-            if total_storage_day > 0 and total_compute > 0:
-                total_compute_apportioned += total_compute * (s / total_storage_day)
+            total_storage_day = sum(v for (_, dd), v in storage_by_customer_date.items() if dd == d)
+            if total_storage_day > 0:
+                ratio = s / total_storage_day
+                if compute_by_date.get(d, 0) > 0:
+                    total_compute  += compute_by_date[d]  * ratio
+                if platform_by_date.get(d, 0) > 0:
+                    total_platform += platform_by_date[d] * ratio
+
+        total = round(total_storage + total_compute + total_platform, 2)
+        a = round(total_storage, 2)
+        b = round(total_compute, 2)
+        c = round(total_platform, 2)
         table.append({
-            'customer':     customer,
-            'storage_cost': round(total_storage, 2),
-            'compute_cost': round(total_compute_apportioned, 2),
-            'total_cost':   round(total_storage + total_compute_apportioned, 2),
+            'customer':       customer,
+            'instance_type':  it_map.get(customer, 'Unknown'),
+            'storage_cost':   a,
+            'compute_cost':   b,
+            'platform_cost':  c,
+            'total_cost':     total,
+            'pct_storage':    round(a / total * 100, 1) if total else 0,
+            'pct_compute':    round(b / total * 100, 1) if total else 0,
+            'pct_platform':   round(c / total * 100, 1) if total else 0,
         })
 
-    table.sort(key=lambda x: -x['total_cost'])
+    table.sort(key=lambda x: (-x['total_cost'],))
+
+    grand_a = round(sum(r['storage_cost']  for r in table), 2)
+    grand_b = round(sum(r['compute_cost']  for r in table), 2)
+    grand_c = round(sum(r['platform_cost'] for r in table), 2)
+    grand_d = round(grand_a + grand_b + grand_c, 2)
 
     return jsonify({
         'dates':       dates,
@@ -469,11 +584,69 @@ def report():
         'daily_chart': daily_chart,
         'table':       table,
         'totals': {
-            'storage_cost': round(sum(r['storage_cost'] for r in table), 2),
-            'compute_cost': round(sum(r['compute_cost'] for r in table), 2),
-            'total_cost':   round(sum(r['total_cost'] for r in table), 2),
+            'storage_cost':  grand_a,
+            'compute_cost':  grand_b,
+            'platform_cost': grand_c,
+            'total_cost':    grand_d,
+            'pct_storage':   round(grand_a / grand_d * 100, 1) if grand_d else 0,
+            'pct_compute':   round(grand_b / grand_d * 100, 1) if grand_d else 0,
+            'pct_platform':  round(grand_c / grand_d * 100, 1) if grand_d else 0,
         }
     })
+
+
+@app.route('/report/customer')
+def report_customer():
+    customer  = request.args.get('customer', '')
+    from_date = request.args.get('from_date')
+    to_date   = request.args.get('to_date')
+    if not customer or not from_date or not to_date:
+        return jsonify({'error': 'Missing params'}), 400
+
+    db  = get_db()
+    cur = get_cur(db)
+    cur.execute(
+        '''SELECT upload_date, type, cost_inr, resource
+           FROM daily_costs
+           WHERE upload_date >= %s AND upload_date <= %s
+           ORDER BY upload_date''',
+        (from_date, to_date)
+    )
+    rows  = cur.fetchall()
+    cur.close()
+
+    dates = sorted(set(r['upload_date'] for r in rows))
+
+    compute_by_date          = {}
+    platform_by_date         = {}
+    storage_by_customer_date = {}
+
+    for r in rows:
+        d = r['upload_date']
+        if r['type'] == 'Customer Attributed (Compute)':
+            compute_by_date[d] = compute_by_date.get(d, 0) + r['cost_inr']
+        elif r['type'] == 'Platform':
+            platform_by_date[d] = platform_by_date.get(d, 0) + r['cost_inr']
+        elif r['type'] == 'Customer Specific (Storage,Read/write)':
+            k = (r['resource'], d)
+            storage_by_customer_date[k] = storage_by_customer_date.get(k, 0) + r['cost_inr']
+
+    result = []
+    for d in dates:
+        s = storage_by_customer_date.get((customer, d), 0)
+        total_storage_day = sum(v for (_, dd), v in storage_by_customer_date.items() if dd == d)
+        ratio = s / total_storage_day if total_storage_day > 0 else 0
+        b = compute_by_date.get(d, 0) * ratio
+        c = platform_by_date.get(d, 0) * ratio
+        result.append({
+            'date':     d,
+            'storage':  round(s, 2),
+            'compute':  round(b, 2),
+            'platform': round(c, 2),
+            'total':    round(s + b + c, 2),
+        })
+
+    return jsonify(result)
 
 
 @app.route('/history')
@@ -481,12 +654,79 @@ def history():
     db  = get_db()
     cur = get_cur(db)
     cur.execute(
-        '''SELECT upload_date, COUNT(*) as rows, SUM(cost_inr) as total
-           FROM daily_costs GROUP BY upload_date ORDER BY upload_date DESC'''
+        '''SELECT
+               LEFT(upload_date, 7) AS month,
+               SUM(CASE WHEN type='Customer Specific (Storage,Read/write)' THEN cost_inr ELSE 0 END) AS storage,
+               SUM(CASE WHEN type='Customer Attributed (Compute)'          THEN cost_inr ELSE 0 END) AS compute,
+               SUM(CASE WHEN type='Platform'                               THEN cost_inr ELSE 0 END) AS platform,
+               SUM(cost_inr) AS total
+           FROM daily_costs
+           GROUP BY LEFT(upload_date, 7)
+           ORDER BY month DESC'''
     )
     rows = cur.fetchall()
     cur.close()
     return jsonify([dict(r) for r in rows])
+
+
+@app.route('/history/month/<month>')
+def history_month(month):
+    db  = get_db()
+    cur = get_cur(db)
+    cur.execute(
+        '''SELECT
+               upload_date,
+               SUM(CASE WHEN type='Customer Specific (Storage,Read/write)' THEN cost_inr ELSE 0 END) AS storage,
+               SUM(CASE WHEN type='Customer Attributed (Compute)'          THEN cost_inr ELSE 0 END) AS compute,
+               SUM(CASE WHEN type='Platform'                               THEN cost_inr ELSE 0 END) AS platform,
+               SUM(cost_inr) AS total
+           FROM daily_costs
+           WHERE LEFT(upload_date, 7) = %s
+           GROUP BY upload_date
+           ORDER BY upload_date DESC''',
+        (month,)
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/history/date/<date>/top10')
+def history_date_top10(date):
+    db  = get_db()
+    cur = get_cur(db)
+    cur.execute(
+        '''SELECT upload_date, resource, type, cost_inr
+           FROM daily_costs WHERE upload_date = %s''',
+        (date,)
+    )
+    rows = cur.fetchall()
+    cur.close()
+
+    compute_total  = sum(r['cost_inr'] for r in rows if r['type'] == 'Customer Attributed (Compute)')
+    platform_total = sum(r['cost_inr'] for r in rows if r['type'] == 'Platform')
+
+    storage_by_cust = {}
+    for r in rows:
+        if r['type'] == 'Customer Specific (Storage,Read/write)':
+            storage_by_cust[r['resource']] = storage_by_cust.get(r['resource'], 0) + r['cost_inr']
+
+    total_storage = sum(storage_by_cust.values())
+    result = []
+    for customer, s in storage_by_cust.items():
+        ratio = s / total_storage if total_storage else 0
+        b = compute_total  * ratio
+        c = platform_total * ratio
+        result.append({
+            'customer':      customer,
+            'storage_cost':  round(s, 2),
+            'compute_cost':  round(b, 2),
+            'platform_cost': round(c, 2),
+            'total_cost':    round(s + b + c, 2),
+        })
+
+    result.sort(key=lambda x: -x['total_cost'])
+    return jsonify(result[:10])
 
 
 if DATABASE_URL:
