@@ -351,10 +351,12 @@ async function loadAvailableDates() {
   const pad = n => String(n).padStart(2, '0');
   const fmt8601 = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+
   const toInput   = document.getElementById('toDate');
   const fromInput = document.getElementById('fromDate');
-  toInput.value   = fmt8601(today);
-  const d15 = new Date(today); d15.setDate(today.getDate() - 14);
+  toInput.value   = fmt8601(yesterday);
+  const d15 = new Date(today); d15.setDate(today.getDate() - 15);
   fromInput.value = fmt8601(d15);
 
   document.querySelectorAll('.qbtn').forEach(btn => {
@@ -362,9 +364,9 @@ async function loadAvailableDates() {
       document.querySelectorAll('.qbtn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const days = parseInt(btn.dataset.days);
-      const from = new Date(today); from.setDate(today.getDate() - days + 1);
+      const from = new Date(today); from.setDate(today.getDate() - days);
       fromInput.value = fmt8601(from);
-      toInput.value   = fmt8601(today);
+      toInput.value   = fmt8601(yesterday);
     });
   });
   // Mark default active
