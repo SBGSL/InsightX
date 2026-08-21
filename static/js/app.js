@@ -485,6 +485,60 @@ function _buildChart() {
 });
 
 /* ── This Month area chart with forecast ── */
+/* ── Holt-Winters Additive (level + trend + weekly seasonality)
+   Falls back to Holt double-exponential when < 14 data points ── */
+function _hwForecast(series, steps) {
+  const n = series.length;
+  if (n === 0) return Array(steps).fill(0);
+  if (n === 1) return Array(steps).fill(series[0]);
+
+  const period = 7; // weekly cycle
+  const alpha = 0.25, beta = 0.08, gamma = 0.15;
+
+  if (n >= period * 2) {
+    // ── Holt-Winters Additive ──
+    // Init level & trend from first two periods
+    const m1 = series.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    const m2 = series.slice(period, period * 2).reduce((a, b) => a + b, 0) / period;
+    let level = m1;
+    let trend = (m2 - m1) / period;
+
+    // Init seasonal factors: deviation from period mean
+    const nPer = Math.floor(n / period);
+    const s = Array(period).fill(0);
+    for (let p = 0; p < nPer; p++) {
+      const pm = series.slice(p * period, (p + 1) * period).reduce((a, b) => a + b, 0) / period;
+      for (let j = 0; j < period; j++) s[j] += (series[p * period + j] - pm);
+    }
+    for (let j = 0; j < period; j++) s[j] /= nPer;
+
+    // Smooth through all observations
+    for (let t = 0; t < n; t++) {
+      const si = t % period;
+      const prevL = level;
+      level = alpha * (series[t] - s[si]) + (1 - alpha) * (level + trend);
+      trend = beta * (level - prevL) + (1 - beta) * trend;
+      s[si] = gamma * (series[t] - level) + (1 - gamma) * s[si];
+    }
+
+    return Array.from({ length: steps }, (_, h) =>
+      Math.max(0, level + (h + 1) * trend + s[(n + h) % period])
+    );
+  } else {
+    // ── Holt's Double Exponential (trend only, no seasonality) ──
+    let level = series[0];
+    let trend = series.length > 1 ? series[1] - series[0] : 0;
+    for (let t = 1; t < n; t++) {
+      const prevL = level;
+      level = alpha * series[t] + (1 - alpha) * (level + trend);
+      trend = beta * (level - prevL) + (1 - beta) * trend;
+    }
+    return Array.from({ length: steps }, (_, h) =>
+      Math.max(0, level + (h + 1) * trend)
+    );
+  }
+}
+
 function _renderThisMonthChart(thisMonthData, trendData) {
   const wrap = document.getElementById('chartWrap');
   wrap.style.display = 'block';
@@ -504,25 +558,33 @@ function _renderThisMonthChart(thisMonthData, trendData) {
   const actualDays = thisMonthData.length;
   const thisTotal = thisMonthData.reduce((s, d) => s + (d.storage||0) + (d.compute||0) + (d.platform||0), 0);
 
-  // Daily avg from last 30 days trend data
-  const trendTotal = trendData.reduce((s, d) => s + (d.storage||0) + (d.compute||0) + (d.platform||0), 0);
-  const trendDays  = trendData.length;
-  const trendDailyAvg = trendDays > 0 ? trendTotal / trendDays : 0;
+  // Build total-cost series from trend data (sorted by date) for model fitting
+  const trendSeries = [...trendData]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(d => (d.storage||0) + (d.compute||0) + (d.platform||0));
+  const trendDays = trendSeries.length;
 
-  // Split trend avg proportionally across A/B/C using this month's actual mix
+  const remainingDays = daysInMonth - (todayDay - 1);
+
+  // Holt-Winters / Holt forecast for remaining days
+  const fcTotals = _hwForecast(trendSeries, remainingDays); // per-day forecast values
+  const projForecastSum = fcTotals.reduce((a, b) => a + b, 0);
+  const projTotal = thisTotal + projForecastSum;
+
+  // Split each forecast day's total across A/B/C using this month's actual mix
   const thisTotalStorage  = thisMonthData.reduce((s, d) => s + (d.storage||0), 0);
   const thisTotalCompute  = thisMonthData.reduce((s, d) => s + (d.compute||0), 0);
   const thisTotalPlatform = thisMonthData.reduce((s, d) => s + (d.platform||0), 0);
   const mixDenom = thisTotalStorage + thisTotalCompute + thisTotalPlatform || 1;
-  const fcStorage  = trendDailyAvg * (thisTotalStorage  / mixDenom);
-  const fcCompute  = trendDailyAvg * (thisTotalCompute  / mixDenom);
-  const fcPlatform = trendDailyAvg * (thisTotalPlatform / mixDenom);
+  const wS = thisTotalStorage  / mixDenom;
+  const wC = thisTotalCompute  / mixDenom;
+  const wP = thisTotalPlatform / mixDenom;
 
   const labels = Array.from({length: daysInMonth}, (_, i) => mkDate(i + 1));
-
   const storageActual = [], computeActual = [], platformActual = [];
   const storageFc = [], computeFc = [], platformFc = [];
 
+  let fcIdx = 0;
   for (let day = 1; day <= daysInMonth; day++) {
     const rec = actualByDate[mkDate(day)];
     const isActual = day <= todayDay - 1;
@@ -536,15 +598,15 @@ function _renderThisMonthChart(thisMonthData, trendData) {
       storageActual.push(null); computeActual.push(null); platformActual.push(null);
       storageFc.push(null); computeFc.push(null); platformFc.push(null);
     } else {
+      const fc = fcTotals[fcIdx++] || 0;
       storageActual.push(null); computeActual.push(null); platformActual.push(null);
-      storageFc.push(fcStorage);
-      computeFc.push(fcCompute);
-      platformFc.push(fcPlatform);
+      storageFc.push(fc * wS);
+      computeFc.push(fc * wC);
+      platformFc.push(fc * wP);
     }
   }
 
-  const remainingDays = daysInMonth - (todayDay - 1);
-  const projTotal = thisTotal + trendDailyAvg * remainingDays;
+  const methodLabel = trendDays >= 14 ? 'Holt-Winters (trend + weekly seasonality)' : 'Holt double exponential (trend)';
 
   const fEl = document.getElementById('forecastSummary');
   fEl.classList.remove('hidden');
@@ -556,15 +618,15 @@ function _renderThisMonthChart(thisMonthData, trendData) {
     </div>
     <div class="fs-sep"></div>
     <div class="fs-item">
-      <span class="fs-label">30-day trend avg</span>
-      <span class="fs-value">₹${fmt(trendDailyAvg)}</span>
-      <span class="fs-sub">per day (last ${trendDays} days)</span>
-    </div>
-    <div class="fs-sep"></div>
-    <div class="fs-item">
       <span class="fs-label">Projected month total</span>
       <span class="fs-value fs-cur">₹${fmt(projTotal)}</span>
       <span class="fs-sub">${remainingDays} days remaining</span>
+    </div>
+    <div class="fs-sep"></div>
+    <div class="fs-item">
+      <span class="fs-label">Forecast method</span>
+      <span class="fs-value" style="font-size:13px">${trendDays >= 14 ? 'Holt-Winters' : 'Holt DES'}</span>
+      <span class="fs-sub">${methodLabel}</span>
     </div>`;
 
   if (_chart) _chart.destroy();
