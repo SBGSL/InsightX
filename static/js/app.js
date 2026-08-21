@@ -485,7 +485,7 @@ function _buildChart() {
 });
 
 /* ── This Month area chart with forecast ── */
-function _renderThisMonthChart(thisMonthData, prevMonthData) {
+function _renderThisMonthChart(thisMonthData, trendData) {
   const wrap = document.getElementById('chartWrap');
   wrap.style.display = 'block';
   document.getElementById('barChartControls').style.display = 'none';
@@ -503,37 +503,48 @@ function _renderThisMonthChart(thisMonthData, prevMonthData) {
 
   const actualDays = thisMonthData.length;
   const thisTotal = thisMonthData.reduce((s, d) => s + (d.storage||0) + (d.compute||0) + (d.platform||0), 0);
-  const thisDailyAvg = actualDays > 0 ? thisTotal / actualDays : 0;
 
-  const prevTotal = prevMonthData.reduce((s, d) => s + (d.storage||0) + (d.compute||0) + (d.platform||0), 0);
-  const prevDays  = prevMonthData.length;
-  const prevDailyAvg = prevDays > 0 ? prevTotal / prevDays : 0;
+  // Daily avg from last 30 days trend data
+  const trendTotal = trendData.reduce((s, d) => s + (d.storage||0) + (d.compute||0) + (d.platform||0), 0);
+  const trendDays  = trendData.length;
+  const trendDailyAvg = trendDays > 0 ? trendTotal / trendDays : 0;
+
+  // Split trend avg proportionally across A/B/C using this month's actual mix
+  const thisTotalStorage  = thisMonthData.reduce((s, d) => s + (d.storage||0), 0);
+  const thisTotalCompute  = thisMonthData.reduce((s, d) => s + (d.compute||0), 0);
+  const thisTotalPlatform = thisMonthData.reduce((s, d) => s + (d.platform||0), 0);
+  const mixDenom = thisTotalStorage + thisTotalCompute + thisTotalPlatform || 1;
+  const fcStorage  = trendDailyAvg * (thisTotalStorage  / mixDenom);
+  const fcCompute  = trendDailyAvg * (thisTotalCompute  / mixDenom);
+  const fcPlatform = trendDailyAvg * (thisTotalPlatform / mixDenom);
 
   const labels = Array.from({length: daysInMonth}, (_, i) => mkDate(i + 1));
 
   const storageActual = [], computeActual = [], platformActual = [];
-  const forecastCur = [], forecastPrev = [];
+  const storageFc = [], computeFc = [], platformFc = [];
 
   for (let day = 1; day <= daysInMonth; day++) {
     const rec = actualByDate[mkDate(day)];
-    if (day <= todayDay - 1 && rec) {
+    const isActual = day <= todayDay - 1;
+
+    if (isActual && rec) {
       storageActual.push(rec.storage || 0);
       computeActual.push(rec.compute || 0);
       platformActual.push(rec.platform || 0);
-      forecastCur.push(null); forecastPrev.push(null);
-    } else if (day <= todayDay - 1) {
+      storageFc.push(null); computeFc.push(null); platformFc.push(null);
+    } else if (isActual) {
       storageActual.push(null); computeActual.push(null); platformActual.push(null);
-      forecastCur.push(null); forecastPrev.push(null);
+      storageFc.push(null); computeFc.push(null); platformFc.push(null);
     } else {
       storageActual.push(null); computeActual.push(null); platformActual.push(null);
-      forecastCur.push(thisDailyAvg);
-      forecastPrev.push(prevDailyAvg);
+      storageFc.push(fcStorage);
+      computeFc.push(fcCompute);
+      platformFc.push(fcPlatform);
     }
   }
 
   const remainingDays = daysInMonth - (todayDay - 1);
-  const projCur  = thisTotal + thisDailyAvg * remainingDays;
-  const projPrev = thisTotal + prevDailyAvg * remainingDays;
+  const projTotal = thisTotal + trendDailyAvg * remainingDays;
 
   const fEl = document.getElementById('forecastSummary');
   fEl.classList.remove('hidden');
@@ -541,19 +552,19 @@ function _renderThisMonthChart(thisMonthData, prevMonthData) {
     <div class="fs-item">
       <span class="fs-label">Actual so far</span>
       <span class="fs-value">₹${fmt(thisTotal)}</span>
-      <span class="fs-sub">${actualDays} day${actualDays !== 1 ? 's' : ''} · ₹${fmt(thisDailyAvg)}/day</span>
+      <span class="fs-sub">${actualDays} day${actualDays !== 1 ? 's' : ''} of data</span>
     </div>
     <div class="fs-sep"></div>
     <div class="fs-item">
-      <span class="fs-label">Forecast — current trend</span>
-      <span class="fs-value fs-cur">₹${fmt(projCur)}</span>
+      <span class="fs-label">30-day trend avg</span>
+      <span class="fs-value">₹${fmt(trendDailyAvg)}</span>
+      <span class="fs-sub">per day (last ${trendDays} days)</span>
+    </div>
+    <div class="fs-sep"></div>
+    <div class="fs-item">
+      <span class="fs-label">Projected month total</span>
+      <span class="fs-value fs-cur">₹${fmt(projTotal)}</span>
       <span class="fs-sub">${remainingDays} days remaining</span>
-    </div>
-    <div class="fs-sep"></div>
-    <div class="fs-item">
-      <span class="fs-label">Forecast — prev month avg</span>
-      <span class="fs-value fs-prev">₹${fmt(projPrev)}</span>
-      <span class="fs-sub">₹${fmt(prevDailyAvg)}/day (prev month)</span>
     </div>`;
 
   if (_chart) _chart.destroy();
@@ -562,11 +573,14 @@ function _renderThisMonthChart(thisMonthData, prevMonthData) {
     data: {
       labels,
       datasets: [
-        { label: 'A — Storage',  data: storageActual,  fill: true, backgroundColor: 'rgba(251,146,60,0.2)', borderColor: 'rgba(251,146,60,0.9)', borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: false },
-        { label: 'B — Compute',  data: computeActual,  fill: true, backgroundColor: 'rgba(79,142,247,0.2)', borderColor: 'rgba(79,142,247,0.9)', borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: false },
-        { label: 'C — Platform', data: platformActual, fill: true, backgroundColor: 'rgba(139,92,246,0.15)', borderColor: 'rgba(139,92,246,0.9)', borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: false },
-        { label: 'Forecast (trend)',     data: forecastCur,  fill: false, borderColor: 'rgba(16,185,129,0.9)',  borderWidth: 2, borderDash: [6,4], pointRadius: 0, tension: 0, spanGaps: false },
-        { label: 'Forecast (prev month)',data: forecastPrev, fill: false, borderColor: 'rgba(245,158,11,0.9)',  borderWidth: 2, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: false },
+        // Actual areas (solid)
+        { label: 'A — Storage (actual)',  data: storageActual,  fill: true, backgroundColor: 'rgba(251,146,60,0.25)',  borderColor: 'rgba(251,146,60,1)',   borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: false },
+        { label: 'B — Compute (actual)',  data: computeActual,  fill: true, backgroundColor: 'rgba(79,142,247,0.25)',  borderColor: 'rgba(79,142,247,1)',   borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: false },
+        { label: 'C — Platform (actual)', data: platformActual, fill: true, backgroundColor: 'rgba(139,92,246,0.2)',   borderColor: 'rgba(139,92,246,1)',   borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: false },
+        // Forecast areas (lighter, hatched feel via low opacity fill + dashed border)
+        { label: 'A — Storage (forecast)',  data: storageFc,  fill: true, backgroundColor: 'rgba(251,146,60,0.10)',  borderColor: 'rgba(251,146,60,0.7)',  borderWidth: 2, borderDash: [5,4], pointRadius: 0, tension: 0, spanGaps: false },
+        { label: 'B — Compute (forecast)',  data: computeFc,  fill: true, backgroundColor: 'rgba(79,142,247,0.10)',  borderColor: 'rgba(79,142,247,0.7)',  borderWidth: 2, borderDash: [5,4], pointRadius: 0, tension: 0, spanGaps: false },
+        { label: 'C — Platform (forecast)', data: platformFc, fill: true, backgroundColor: 'rgba(139,92,246,0.08)',  borderColor: 'rgba(139,92,246,0.7)',  borderWidth: 2, borderDash: [5,4], pointRadius: 0, tension: 0, spanGaps: false },
       ],
     },
     options: {
@@ -793,16 +807,16 @@ async function loadReport() {
   meta.textContent = `${data.dates.length} day${data.dates.length>1?'s':''} of data  (${data.dates[0]} → ${data.dates[data.dates.length-1]})`;
 
   if (_thisMonthMode) {
+    // Fetch last 30 days (rolling) for the trend baseline
     const today = new Date();
     const pad = n => String(n).padStart(2, '0');
-    const prevYear  = today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear();
-    const prevMonth = today.getMonth() === 0 ? 12 : today.getMonth();
-    const lastDayPrev = new Date(today.getFullYear(), today.getMonth(), 0).getDate();
-    const prevFrom = `${prevYear}-${pad(prevMonth)}-01`;
-    const prevTo   = `${prevYear}-${pad(prevMonth)}-${lastDayPrev}`;
-    const prevRes  = await fetch(`/report?from_date=${prevFrom}&to_date=${prevTo}`);
-    const prevData = await prevRes.json();
-    _renderThisMonthChart(data.daily_chart, prevData.daily_chart || []);
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    const d30 = new Date(today); d30.setDate(today.getDate() - 30);
+    const trendFrom = `${d30.getFullYear()}-${pad(d30.getMonth()+1)}-${pad(d30.getDate())}`;
+    const trendTo   = `${yesterday.getFullYear()}-${pad(yesterday.getMonth()+1)}-${pad(yesterday.getDate())}`;
+    const trendRes  = await fetch(`/report?from_date=${trendFrom}&to_date=${trendTo}`);
+    const trendData = await trendRes.json();
+    _renderThisMonthChart(data.daily_chart, trendData.daily_chart || []);
   } else {
     renderChart(data.daily_chart);
   }
