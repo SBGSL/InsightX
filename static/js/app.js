@@ -660,7 +660,7 @@ function _renderThisMonthChart(thisMonthData, trendData) {
         }
       },
       scales: {
-        x: { grid: { display: false }, ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 16 } },
+        x: { grid: { display: false }, ticks: { maxRotation: 0, callback: (_, i) => i + 1 } },
         y: { ticks: { callback: v => '₹' + (v >= 1000 ? (v/1000).toFixed(1)+'k' : v) } },
       },
     },
