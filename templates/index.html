@@ -172,6 +172,7 @@
             <button class="qbtn" data-days="7">Last 7 days</button>
             <button class="qbtn" data-days="15">Last 15 days</button>
             <button class="qbtn" data-days="30">Last 30 days</button>
+            <button class="qbtn qbtn-month" data-days="month">This Month</button>
           </div>
           <button class="btn btn-primary" id="loadReportBtn">Load Report</button>
           <button class="btn btn-outline" id="exportCsvBtn">Export CSV</button>
@@ -179,14 +180,15 @@
 
         <div id="reportMeta" class="muted small"></div>
 
-        <!-- Stacked bar chart -->
+        <!-- Stacked bar / area chart -->
         <div id="chartWrap" style="display:none; margin-bottom:28px;">
-          <div class="chart-toggles">
+          <div id="barChartControls" class="chart-toggles">
             <label class="chart-toggle"><input type="checkbox" id="chkStorage" checked> <span class="ct-dot ct-storage"></span> A — Storage</label>
             <label class="chart-toggle"><input type="checkbox" id="chkCompute" checked> <span class="ct-dot ct-compute"></span> B — Compute</label>
             <label class="chart-toggle"><input type="checkbox" id="chkPlatform" checked> <span class="ct-dot ct-platform"></span> C — Platform</label>
           </div>
-          <canvas id="costChart" height="100"></canvas>
+          <div id="forecastSummary" class="forecast-summary hidden"></div>
+          <canvas id="costChart" height="110"></canvas>
         </div>
 
         <!-- Customer filter — compact dropdown -->

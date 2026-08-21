@@ -393,6 +393,8 @@ async function loadAvailableDates() {
 }
 
 /* ── Report date controls ── */
+let _thisMonthMode = false;
+
 (function initDateControls() {
   const today = new Date();
   const pad = n => String(n).padStart(2, '0');
@@ -410,10 +412,22 @@ async function loadAvailableDates() {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.qbtn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      const days = parseInt(btn.dataset.days);
-      const from = new Date(today); from.setDate(today.getDate() - days);
-      fromInput.value = fmt8601(from);
-      toInput.value   = fmt8601(yesterday);
+
+      if (btn.dataset.days === 'month') {
+        _thisMonthMode = true;
+        const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        fromInput.value = fmt8601(firstOfMonth);
+        toInput.value   = fmt8601(yesterday);
+        document.getElementById('barChartControls').style.display = 'none';
+      } else {
+        _thisMonthMode = false;
+        document.getElementById('barChartControls').style.display = '';
+        document.getElementById('forecastSummary').classList.add('hidden');
+        const days = parseInt(btn.dataset.days);
+        const from = new Date(today); from.setDate(today.getDate() - days);
+        fromInput.value = fmt8601(from);
+        toInput.value   = fmt8601(yesterday);
+      }
     });
   });
   // Mark default active
@@ -467,8 +481,115 @@ function _buildChart() {
 }
 
 ['chkStorage','chkCompute','chkPlatform'].forEach(id => {
-  document.getElementById(id)?.addEventListener('change', () => { if (_lastDailyChart.length) _buildChart(); });
+  document.getElementById(id)?.addEventListener('change', () => { if (_lastDailyChart.length && !_thisMonthMode) _buildChart(); });
 });
+
+/* ── This Month area chart with forecast ── */
+function _renderThisMonthChart(thisMonthData, prevMonthData) {
+  const wrap = document.getElementById('chartWrap');
+  wrap.style.display = 'block';
+  document.getElementById('barChartControls').style.display = 'none';
+
+  const today = new Date();
+  const year  = today.getFullYear();
+  const month = today.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayDay = today.getDate();
+  const pad = n => String(n).padStart(2, '0');
+  const mkDate = d => `${year}-${pad(month+1)}-${pad(d)}`;
+
+  const actualByDate = {};
+  for (const d of thisMonthData) actualByDate[d.date] = d;
+
+  const actualDays = thisMonthData.length;
+  const thisTotal = thisMonthData.reduce((s, d) => s + (d.storage||0) + (d.compute||0) + (d.platform||0), 0);
+  const thisDailyAvg = actualDays > 0 ? thisTotal / actualDays : 0;
+
+  const prevTotal = prevMonthData.reduce((s, d) => s + (d.storage||0) + (d.compute||0) + (d.platform||0), 0);
+  const prevDays  = prevMonthData.length;
+  const prevDailyAvg = prevDays > 0 ? prevTotal / prevDays : 0;
+
+  const labels = Array.from({length: daysInMonth}, (_, i) => mkDate(i + 1));
+
+  const storageActual = [], computeActual = [], platformActual = [];
+  const forecastCur = [], forecastPrev = [];
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const rec = actualByDate[mkDate(day)];
+    if (day <= todayDay - 1 && rec) {
+      storageActual.push(rec.storage || 0);
+      computeActual.push(rec.compute || 0);
+      platformActual.push(rec.platform || 0);
+      forecastCur.push(null); forecastPrev.push(null);
+    } else if (day <= todayDay - 1) {
+      storageActual.push(null); computeActual.push(null); platformActual.push(null);
+      forecastCur.push(null); forecastPrev.push(null);
+    } else {
+      storageActual.push(null); computeActual.push(null); platformActual.push(null);
+      forecastCur.push(thisDailyAvg);
+      forecastPrev.push(prevDailyAvg);
+    }
+  }
+
+  const remainingDays = daysInMonth - (todayDay - 1);
+  const projCur  = thisTotal + thisDailyAvg * remainingDays;
+  const projPrev = thisTotal + prevDailyAvg * remainingDays;
+
+  const fEl = document.getElementById('forecastSummary');
+  fEl.classList.remove('hidden');
+  fEl.innerHTML = `
+    <div class="fs-item">
+      <span class="fs-label">Actual so far</span>
+      <span class="fs-value">₹${fmt(thisTotal)}</span>
+      <span class="fs-sub">${actualDays} day${actualDays !== 1 ? 's' : ''} · ₹${fmt(thisDailyAvg)}/day</span>
+    </div>
+    <div class="fs-sep"></div>
+    <div class="fs-item">
+      <span class="fs-label">Forecast — current trend</span>
+      <span class="fs-value fs-cur">₹${fmt(projCur)}</span>
+      <span class="fs-sub">${remainingDays} days remaining</span>
+    </div>
+    <div class="fs-sep"></div>
+    <div class="fs-item">
+      <span class="fs-label">Forecast — prev month avg</span>
+      <span class="fs-value fs-prev">₹${fmt(projPrev)}</span>
+      <span class="fs-sub">₹${fmt(prevDailyAvg)}/day (prev month)</span>
+    </div>`;
+
+  if (_chart) _chart.destroy();
+  _chart = new Chart(document.getElementById('costChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'A — Storage',  data: storageActual,  fill: true, backgroundColor: 'rgba(251,146,60,0.2)', borderColor: 'rgba(251,146,60,0.9)', borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: false },
+        { label: 'B — Compute',  data: computeActual,  fill: true, backgroundColor: 'rgba(79,142,247,0.2)', borderColor: 'rgba(79,142,247,0.9)', borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: false },
+        { label: 'C — Platform', data: platformActual, fill: true, backgroundColor: 'rgba(139,92,246,0.15)', borderColor: 'rgba(139,92,246,0.9)', borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: false },
+        { label: 'Forecast (trend)',     data: forecastCur,  fill: false, borderColor: 'rgba(16,185,129,0.9)',  borderWidth: 2, borderDash: [6,4], pointRadius: 0, tension: 0, spanGaps: false },
+        { label: 'Forecast (prev month)',data: forecastPrev, fill: false, borderColor: 'rgba(245,158,11,0.9)',  borderWidth: 2, borderDash: [4,4], pointRadius: 0, tension: 0, spanGaps: false },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (ctx.parsed.y === null) return null;
+              return ` ${ctx.dataset.label}: ₹${ctx.parsed.y.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 16 } },
+        y: { ticks: { callback: v => '₹' + (v >= 1000 ? (v/1000).toFixed(1)+'k' : v) } },
+      },
+    },
+  });
+}
 
 /* ── Customer filter ── */
 let _allCustomers      = [];
@@ -671,7 +792,20 @@ async function loadReport() {
   hide('reportEmpty');
   meta.textContent = `${data.dates.length} day${data.dates.length>1?'s':''} of data  (${data.dates[0]} → ${data.dates[data.dates.length-1]})`;
 
-  renderChart(data.daily_chart);
+  if (_thisMonthMode) {
+    const today = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const prevYear  = today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear();
+    const prevMonth = today.getMonth() === 0 ? 12 : today.getMonth();
+    const lastDayPrev = new Date(today.getFullYear(), today.getMonth(), 0).getDate();
+    const prevFrom = `${prevYear}-${pad(prevMonth)}-01`;
+    const prevTo   = `${prevYear}-${pad(prevMonth)}-${lastDayPrev}`;
+    const prevRes  = await fetch(`/report?from_date=${prevFrom}&to_date=${prevTo}`);
+    const prevData = await prevRes.json();
+    _renderThisMonthChart(data.daily_chart, prevData.daily_chart || []);
+  } else {
+    renderChart(data.daily_chart);
+  }
   window._reportData = data;
 
   buildCustomerFilter(data.table.map(r => r.customer));
