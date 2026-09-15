@@ -486,57 +486,71 @@ function _buildChart() {
 
 /* ── This Month area chart with forecast ── */
 /* ── Holt-Winters Additive (level + trend + weekly seasonality)
-   Falls back to Holt double-exponential when < 14 data points ── */
+   Falls back to Holt double-exponential when < 14 data points.
+   Guards against zero forecasts caused by missing-day zeros or runaway downward trend. ── */
 function _hwForecast(series, steps) {
-  const n = series.length;
+  // Strip zero/missing days — days with no upload shouldn't pull the model down
+  const clean = series.filter(v => v > 0);
+  const n = clean.length;
+
   if (n === 0) return Array(steps).fill(0);
-  if (n === 1) return Array(steps).fill(series[0]);
+  if (n === 1) return Array(steps).fill(clean[0]);
+
+  const seriesMean = clean.reduce((a, b) => a + b, 0) / n;
+  const floor = seriesMean * 0.5; // forecast can never fall below 50% of historical mean
 
   const period = 7; // weekly cycle
-  const alpha = 0.25, beta = 0.08, gamma = 0.15;
+  const alpha = 0.25, beta = 0.05, gamma = 0.15; // lower beta → damp trend aggressively
+
+  let result;
 
   if (n >= period * 2) {
     // ── Holt-Winters Additive ──
-    // Init level & trend from first two periods
-    const m1 = series.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    const m2 = series.slice(period, period * 2).reduce((a, b) => a + b, 0) / period;
+    const m1 = clean.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    const m2 = clean.slice(period, period * 2).reduce((a, b) => a + b, 0) / period;
     let level = m1;
-    let trend = (m2 - m1) / period;
+    // Clamp initial trend: no more than ±5% of mean per day
+    let trend = Math.max(-(seriesMean * 0.05), Math.min(seriesMean * 0.05, (m2 - m1) / period));
 
-    // Init seasonal factors: deviation from period mean
     const nPer = Math.floor(n / period);
     const s = Array(period).fill(0);
     for (let p = 0; p < nPer; p++) {
-      const pm = series.slice(p * period, (p + 1) * period).reduce((a, b) => a + b, 0) / period;
-      for (let j = 0; j < period; j++) s[j] += (series[p * period + j] - pm);
+      const pm = clean.slice(p * period, (p + 1) * period).reduce((a, b) => a + b, 0) / period;
+      for (let j = 0; j < period; j++) s[j] += (clean[p * period + j] - pm);
     }
     for (let j = 0; j < period; j++) s[j] /= nPer;
 
-    // Smooth through all observations
     for (let t = 0; t < n; t++) {
       const si = t % period;
       const prevL = level;
-      level = alpha * (series[t] - s[si]) + (1 - alpha) * (level + trend);
-      trend = beta * (level - prevL) + (1 - beta) * trend;
-      s[si] = gamma * (series[t] - level) + (1 - gamma) * s[si];
+      level = alpha * (clean[t] - s[si]) + (1 - alpha) * (level + trend);
+      // Clamp smoothed trend to ±5% of mean per day
+      trend = Math.max(-(seriesMean * 0.05), Math.min(seriesMean * 0.05,
+        beta * (level - prevL) + (1 - beta) * trend));
+      s[si] = gamma * (clean[t] - level) + (1 - gamma) * s[si];
     }
 
-    return Array.from({ length: steps }, (_, h) =>
-      Math.max(0, level + (h + 1) * trend + s[(n + h) % period])
+    result = Array.from({ length: steps }, (_, h) =>
+      Math.max(floor, level + (h + 1) * trend + s[(n + h) % period])
     );
   } else {
-    // ── Holt's Double Exponential (trend only, no seasonality) ──
-    let level = series[0];
-    let trend = series.length > 1 ? series[1] - series[0] : 0;
+    // ── Holt's Double Exponential (trend only) ──
+    let level = clean[0];
+    let trend = clean.length > 1 ? (clean[1] - clean[0]) : 0;
+    trend = Math.max(-(seriesMean * 0.05), Math.min(seriesMean * 0.05, trend));
+
     for (let t = 1; t < n; t++) {
       const prevL = level;
-      level = alpha * series[t] + (1 - alpha) * (level + trend);
-      trend = beta * (level - prevL) + (1 - beta) * trend;
+      level = alpha * clean[t] + (1 - alpha) * (level + trend);
+      trend = Math.max(-(seriesMean * 0.05), Math.min(seriesMean * 0.05,
+        beta * (level - prevL) + (1 - beta) * trend));
     }
-    return Array.from({ length: steps }, (_, h) =>
-      Math.max(0, level + (h + 1) * trend)
+    result = Array.from({ length: steps }, (_, h) =>
+      Math.max(floor, level + (h + 1) * trend)
     );
   }
+
+  return result;
 }
 
 function _renderThisMonthChart(thisMonthData, trendData) {
