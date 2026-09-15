@@ -557,28 +557,28 @@ function _renderThisMonthChart(thisMonthData, trendData) {
 
   const actualDays = thisMonthData.length;
   const thisTotal = thisMonthData.reduce((s, d) => s + (d.storage||0) + (d.compute||0) + (d.platform||0), 0);
-
-  // Build total-cost series from trend data (sorted by date) for model fitting
-  const trendSeries = [...trendData]
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .map(d => (d.storage||0) + (d.compute||0) + (d.platform||0));
-  const trendDays = trendSeries.length;
-
-  const remainingDays = daysInMonth - (todayDay - 1);
-
-  // Holt-Winters / Holt forecast for remaining days
-  const fcTotals = _hwForecast(trendSeries, remainingDays); // per-day forecast values
-  const projForecastSum = fcTotals.reduce((a, b) => a + b, 0);
-  const projTotal = thisTotal + projForecastSum;
-
-  // Split each forecast day's total across A/B/C using this month's actual mix
   const thisTotalStorage  = thisMonthData.reduce((s, d) => s + (d.storage||0), 0);
   const thisTotalCompute  = thisMonthData.reduce((s, d) => s + (d.compute||0), 0);
   const thisTotalPlatform = thisMonthData.reduce((s, d) => s + (d.platform||0), 0);
-  const mixDenom = thisTotalStorage + thisTotalCompute + thisTotalPlatform || 1;
-  const wS = thisTotalStorage  / mixDenom;
-  const wC = thisTotalCompute  / mixDenom;
-  const wP = thisTotalPlatform / mixDenom;
+
+  // Build per-category series from trend data (sorted by date) — fit independently
+  const sorted = [...trendData].sort((a, b) => a.date.localeCompare(b.date));
+  const trendDays = sorted.length;
+  const trendSeriesS = sorted.map(d => d.storage  || 0);
+  const trendSeriesC = sorted.map(d => d.compute  || 0);
+  const trendSeriesP = sorted.map(d => d.platform || 0);
+
+  const remainingDays = daysInMonth - (todayDay - 1);
+
+  // Independent Holt-Winters forecast per category
+  const fcStorage  = _hwForecast(trendSeriesS, remainingDays);
+  const fcCompute  = _hwForecast(trendSeriesC, remainingDays);
+  const fcPlatform = _hwForecast(trendSeriesP, remainingDays);
+
+  const projForecastStorage  = fcStorage.reduce((a, b) => a + b, 0);
+  const projForecastCompute  = fcCompute.reduce((a, b) => a + b, 0);
+  const projForecastPlatform = fcPlatform.reduce((a, b) => a + b, 0);
+  const projTotal = thisTotal + projForecastStorage + projForecastCompute + projForecastPlatform;
 
   const labels = Array.from({length: daysInMonth}, (_, i) => mkDate(i + 1));
   const storageActual = [], computeActual = [], platformActual = [];
@@ -598,11 +598,11 @@ function _renderThisMonthChart(thisMonthData, trendData) {
       storageActual.push(null); computeActual.push(null); platformActual.push(null);
       storageFc.push(null); computeFc.push(null); platformFc.push(null);
     } else {
-      const fc = fcTotals[fcIdx++] || 0;
       storageActual.push(null); computeActual.push(null); platformActual.push(null);
-      storageFc.push(fc * wS);
-      computeFc.push(fc * wC);
-      platformFc.push(fc * wP);
+      storageFc.push(fcStorage[fcIdx]   || 0);
+      computeFc.push(fcCompute[fcIdx]   || 0);
+      platformFc.push(fcPlatform[fcIdx] || 0);
+      fcIdx++;
     }
   }
 
@@ -614,13 +614,13 @@ function _renderThisMonthChart(thisMonthData, trendData) {
     <div class="fs-item">
       <span class="fs-label">Actual so far</span>
       <span class="fs-value">₹${fmt(thisTotal)}</span>
-      <span class="fs-sub">${actualDays} day${actualDays !== 1 ? 's' : ''} of data</span>
+      <span class="fs-sub">${actualDays} day${actualDays !== 1 ? 's' : ''} · A:₹${fmt(thisTotalStorage)} B:₹${fmt(thisTotalCompute)} C:₹${fmt(thisTotalPlatform)}</span>
     </div>
     <div class="fs-sep"></div>
     <div class="fs-item">
       <span class="fs-label">Projected month total</span>
       <span class="fs-value fs-cur">₹${fmt(projTotal)}</span>
-      <span class="fs-sub">${remainingDays} days remaining</span>
+      <span class="fs-sub">A:₹${fmt(thisTotalStorage+projForecastStorage)} B:₹${fmt(thisTotalCompute+projForecastCompute)} C:₹${fmt(thisTotalPlatform+projForecastPlatform)}</span>
     </div>
     <div class="fs-sep"></div>
     <div class="fs-item">
