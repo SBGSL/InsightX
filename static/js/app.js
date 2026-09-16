@@ -487,7 +487,7 @@ function _buildChart() {
 /* ── This Month area chart with forecast ── */
 /* ── Holt-Winters Additive (level + trend + weekly seasonality)
    Falls back to Holt double-exponential when < 14 data points.
-   Guards against zero forecasts caused by missing-day zeros or runaway downward trend. ── */
+   Guards against zero forecasts caused by missing-day zeros. ── */
 function _hwForecast(series, steps) {
   // Strip zero/missing days — days with no upload shouldn't pull the model down
   const clean = series.filter(v => v > 0);
@@ -497,10 +497,10 @@ function _hwForecast(series, steps) {
   if (n === 1) return Array(steps).fill(clean[0]);
 
   const seriesMean = clean.reduce((a, b) => a + b, 0) / n;
-  const floor = seriesMean * 0.5; // forecast can never fall below 50% of historical mean
+  const floor = seriesMean * 0.2; // soft floor — forecast won't collapse below 20% of historical mean
 
-  const period = 7; // weekly cycle
-  const alpha = 0.25, beta = 0.05, gamma = 0.15; // lower beta → damp trend aggressively
+  const period = 7;
+  const alpha = 0.3, beta = 0.1, gamma = 0.15;
 
   let result;
 
@@ -509,8 +509,8 @@ function _hwForecast(series, steps) {
     const m1 = clean.slice(0, period).reduce((a, b) => a + b, 0) / period;
     const m2 = clean.slice(period, period * 2).reduce((a, b) => a + b, 0) / period;
     let level = m1;
-    // Clamp initial trend: no more than ±5% of mean per day
-    let trend = Math.max(-(seriesMean * 0.05), Math.min(seriesMean * 0.05, (m2 - m1) / period));
+    // Clamp only the *initial* trend to ±20% of mean to avoid explosive start
+    let trend = Math.max(-(seriesMean * 0.2), Math.min(seriesMean * 0.2, (m2 - m1) / period));
 
     const nPer = Math.floor(n / period);
     const s = Array(period).fill(0);
@@ -524,9 +524,7 @@ function _hwForecast(series, steps) {
       const si = t % period;
       const prevL = level;
       level = alpha * (clean[t] - s[si]) + (1 - alpha) * (level + trend);
-      // Clamp smoothed trend to ±5% of mean per day
-      trend = Math.max(-(seriesMean * 0.05), Math.min(seriesMean * 0.05,
-        beta * (level - prevL) + (1 - beta) * trend));
+      trend = beta * (level - prevL) + (1 - beta) * trend;
       s[si] = gamma * (clean[t] - level) + (1 - gamma) * s[si];
     }
 
@@ -536,14 +534,13 @@ function _hwForecast(series, steps) {
   } else {
     // ── Holt's Double Exponential (trend only) ──
     let level = clean[0];
-    let trend = clean.length > 1 ? (clean[1] - clean[0]) : 0;
-    trend = Math.max(-(seriesMean * 0.05), Math.min(seriesMean * 0.05, trend));
+    let trend = clean.length > 1 ? (clean[clean.length - 1] - clean[0]) / (clean.length - 1) : 0;
+    trend = Math.max(-(seriesMean * 0.2), Math.min(seriesMean * 0.2, trend));
 
     for (let t = 1; t < n; t++) {
       const prevL = level;
       level = alpha * clean[t] + (1 - alpha) * (level + trend);
-      trend = Math.max(-(seriesMean * 0.05), Math.min(seriesMean * 0.05,
-        beta * (level - prevL) + (1 - beta) * trend));
+      trend = beta * (level - prevL) + (1 - beta) * trend;
     }
     result = Array.from({ length: steps }, (_, h) =>
       Math.max(floor, level + (h + 1) * trend)
