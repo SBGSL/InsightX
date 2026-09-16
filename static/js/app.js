@@ -550,7 +550,7 @@ function _hwForecast(series, steps) {
   return result;
 }
 
-function _renderThisMonthChart(thisMonthData, trendData) {
+function _renderThisMonthChart(thisMonthData, trendData, prevMonthReport) {
   const wrap = document.getElementById('chartWrap');
   wrap.style.display = 'block';
   document.getElementById('barChartControls').style.display = 'none';
@@ -617,7 +617,11 @@ function _renderThisMonthChart(thisMonthData, trendData) {
     }
   }
 
-  const methodLabel = trendDays >= 14 ? 'Holt-Winters (trend + weekly seasonality)' : 'Holt double exponential (trend)';
+  const prevTotals = prevMonthReport && prevMonthReport.totals ? prevMonthReport.totals : null;
+  const prevMonthName = (() => {
+    const d = new Date(); d.setMonth(d.getMonth() - 1);
+    return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+  })();
 
   const fEl = document.getElementById('forecastSummary');
   fEl.classList.remove('hidden');
@@ -635,9 +639,9 @@ function _renderThisMonthChart(thisMonthData, trendData) {
     </div>
     <div class="fs-sep"></div>
     <div class="fs-item">
-      <span class="fs-label">Forecast method</span>
-      <span class="fs-value" style="font-size:13px">${trendDays >= 14 ? 'Holt-Winters' : 'Holt DES'}</span>
-      <span class="fs-sub">${methodLabel}</span>
+      <span class="fs-label">${prevMonthName}</span>
+      <span class="fs-value">₹${prevTotals ? fmt(prevTotals.total_cost) : '—'}</span>
+      <span class="fs-sub">${prevTotals ? `A:₹${fmt(prevTotals.storage_cost)} B:₹${fmt(prevTotals.compute_cost)} C:₹${fmt(prevTotals.platform_cost)}` : 'No data'}</span>
     </div>`;
 
   if (_chart) _chart.destroy();
@@ -887,9 +891,21 @@ async function loadReport() {
     const d30 = new Date(today); d30.setDate(today.getDate() - 30);
     const trendFrom = `${d30.getFullYear()}-${pad(d30.getMonth()+1)}-${pad(d30.getDate())}`;
     const trendTo   = `${yesterday.getFullYear()}-${pad(yesterday.getMonth()+1)}-${pad(yesterday.getDate())}`;
-    const trendRes  = await fetch(`/report?from_date=${trendFrom}&to_date=${trendTo}`);
+
+    // Fetch previous calendar month for display
+    const prevYear  = today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear();
+    const prevMonth = today.getMonth() === 0 ? 12 : today.getMonth();
+    const lastDayPrev = new Date(today.getFullYear(), today.getMonth(), 0).getDate();
+    const prevFrom = `${prevYear}-${pad(prevMonth)}-01`;
+    const prevTo   = `${prevYear}-${pad(prevMonth)}-${lastDayPrev}`;
+
+    const [trendRes, prevRes] = await Promise.all([
+      fetch(`/report?from_date=${trendFrom}&to_date=${trendTo}`),
+      fetch(`/report?from_date=${prevFrom}&to_date=${prevTo}`),
+    ]);
     const trendData = await trendRes.json();
-    _renderThisMonthChart(data.daily_chart, trendData.daily_chart || []);
+    const prevData  = await prevRes.json();
+    _renderThisMonthChart(data.daily_chart, trendData.daily_chart || [], prevData);
   } else {
     renderChart(data.daily_chart);
   }
