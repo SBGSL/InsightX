@@ -164,19 +164,21 @@
       <!-- Report -->
       <div class="card">
         <div class="report-controls">
+          <label>Period
+            <select id="rangeSelect" class="range-select">
+              <option value="7">Last 7 Days</option>
+              <option value="15">Last 15 Days</option>
+              <option value="month" selected>This Month</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
           <label>From
-            <input type="date" id="fromDate" />
+            <input type="date" id="fromDate" class="readonly-date" readonly />
           </label>
           <label>To
-            <input type="date" id="toDate" />
+            <input type="date" id="toDate" class="readonly-date" readonly />
           </label>
-          <div class="quick-ranges">
-            <button class="qbtn" data-days="7">Last 7 days</button>
-            <button class="qbtn" data-days="15">Last 15 days</button>
-            <button class="qbtn" data-days="30">Last 30 days</button>
-            <button class="qbtn qbtn-month" data-days="month">This Month</button>
-          </div>
-          <button class="btn btn-primary" id="loadReportBtn">Load Report</button>
+          <button class="btn btn-primary" id="loadReportBtn">Show</button>
           <button class="btn btn-outline" id="exportCsvBtn">Export CSV</button>
         </div>
 

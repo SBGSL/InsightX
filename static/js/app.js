@@ -401,39 +401,48 @@ let _thisMonthMode = false;
   const today = new Date();
   const pad = n => String(n).padStart(2, '0');
   const fmt8601 = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-
   const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
 
-  const toInput   = document.getElementById('toDate');
-  const fromInput = document.getElementById('fromDate');
-  toInput.value   = fmt8601(yesterday);
-  const d15 = new Date(today); d15.setDate(today.getDate() - 15);
-  fromInput.value = fmt8601(d15);
+  const toInput     = document.getElementById('toDate');
+  const fromInput   = document.getElementById('fromDate');
+  const rangeSelect = document.getElementById('rangeSelect');
 
-  document.querySelectorAll('.qbtn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.qbtn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+  function applyRange(val) {
+    if (val === 'month') {
+      _thisMonthMode = true;
+      const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      fromInput.value = fmt8601(firstOfMonth);
+      toInput.value   = fmt8601(yesterday);
+      fromInput.readOnly = true;
+      toInput.readOnly   = true;
+      fromInput.classList.add('readonly-date');
+      toInput.classList.add('readonly-date');
+      document.getElementById('barChartControls').style.display = 'none';
+    } else if (val === 'custom') {
+      _thisMonthMode = false;
+      fromInput.readOnly = false;
+      toInput.readOnly   = false;
+      fromInput.classList.remove('readonly-date');
+      toInput.classList.remove('readonly-date');
+      document.getElementById('barChartControls').style.display = '';
+      document.getElementById('forecastSummary').classList.add('hidden');
+    } else {
+      _thisMonthMode = false;
+      const days = parseInt(val);
+      const from = new Date(today); from.setDate(today.getDate() - days);
+      fromInput.value = fmt8601(from);
+      toInput.value   = fmt8601(yesterday);
+      fromInput.readOnly = true;
+      toInput.readOnly   = true;
+      fromInput.classList.add('readonly-date');
+      toInput.classList.add('readonly-date');
+      document.getElementById('barChartControls').style.display = '';
+      document.getElementById('forecastSummary').classList.add('hidden');
+    }
+  }
 
-      if (btn.dataset.days === 'month') {
-        _thisMonthMode = true;
-        const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        fromInput.value = fmt8601(firstOfMonth);
-        toInput.value   = fmt8601(yesterday);
-        document.getElementById('barChartControls').style.display = 'none';
-      } else {
-        _thisMonthMode = false;
-        document.getElementById('barChartControls').style.display = '';
-        document.getElementById('forecastSummary').classList.add('hidden');
-        const days = parseInt(btn.dataset.days);
-        const from = new Date(today); from.setDate(today.getDate() - days);
-        fromInput.value = fmt8601(from);
-        toInput.value   = fmt8601(yesterday);
-      }
-    });
-  });
-  // Mark default active
-  document.querySelector('.qbtn[data-days="15"]').classList.add('active');
+  rangeSelect.addEventListener('change', () => applyRange(rangeSelect.value));
+  applyRange(rangeSelect.value);
 })();
 
 /* ── Chart instance ── */

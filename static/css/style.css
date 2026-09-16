@@ -121,6 +121,13 @@ tfoot td { font-weight: 700; border-top: 2px solid #e5e7eb; padding: 10px 12px; 
   font-size: 13px; outline: none; color: #111827;
 }
 .report-controls input[type=date]:focus { border-color: #4f8ef7; }
+.range-select {
+  padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 7px;
+  font-size: 13px; outline: none; color: #111827; background: #fff;
+  cursor: pointer; min-width: 140px;
+}
+.range-select:focus { border-color: #4f8ef7; }
+.readonly-date { background: #f3f4f6 !important; color: #6b7280 !important; cursor: default; }
 
 .quick-ranges { display: flex; gap: 6px; align-self: flex-end; }
 .qbtn {
