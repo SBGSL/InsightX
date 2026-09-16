@@ -346,7 +346,7 @@ async function loadAvailableDates() {
   const empty = document.getElementById('datesEmpty');
   const count = document.getElementById('datesCount');
   chips.innerHTML = '<span class="muted small">Loading…</span>';
-
+  showLoader();
   try {
     const res  = await fetch('/available-dates');
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -389,6 +389,8 @@ async function loadAvailableDates() {
       </div>`).join('');
   } catch (e) {
     chips.innerHTML = `<span class="muted small">Error loading dates: ${e.message}</span>`;
+  } finally {
+    hideLoader();
   }
 }
 
@@ -623,6 +625,15 @@ function _renderThisMonthChart(thisMonthData, trendData, prevMonthReport) {
     return d.toLocaleString('default', { month: 'long', year: 'numeric' });
   })();
 
+  const pctChange = prevTotals && prevTotals.total_cost > 0
+    ? ((projTotal - prevTotals.total_cost) / prevTotals.total_cost) * 100
+    : null;
+  const pctLabel = pctChange === null ? '—'
+    : (pctChange >= 0 ? `▲ +${pctChange.toFixed(1)}%` : `▼ ${pctChange.toFixed(1)}%`);
+  const pctClass = pctChange === null ? '' : (pctChange >= 0 ? 'fs-pct-up' : 'fs-pct-down');
+  const pctSub   = pctChange === null ? 'No prev month data'
+    : (pctChange >= 0 ? 'Projected increase vs last month' : 'Projected decrease vs last month');
+
   const fEl = document.getElementById('forecastSummary');
   fEl.classList.remove('hidden');
   fEl.innerHTML = `
@@ -642,6 +653,12 @@ function _renderThisMonthChart(thisMonthData, trendData, prevMonthReport) {
       <span class="fs-label">${prevMonthName}</span>
       <span class="fs-value">₹${prevTotals ? fmt(prevTotals.total_cost) : '—'}</span>
       <span class="fs-sub">${prevTotals ? `A:₹${fmt(prevTotals.storage_cost)} B:₹${fmt(prevTotals.compute_cost)} C:₹${fmt(prevTotals.platform_cost)}` : 'No data'}</span>
+    </div>
+    <div class="fs-sep"></div>
+    <div class="fs-item">
+      <span class="fs-label">vs Last Month</span>
+      <span class="fs-pct ${pctClass}">${pctLabel}</span>
+      <span class="fs-sub">${pctSub}</span>
     </div>`;
 
   if (_chart) _chart.destroy();
@@ -869,6 +886,8 @@ async function loadReport() {
   const to   = document.getElementById('toDate').value;
   if (!from || !to) { alert('Please select a date range.'); return; }
 
+  showLoader();
+  try {
   const res  = await fetch(`/report?from_date=${from}&to_date=${to}`);
   const data = await res.json();
 
@@ -914,6 +933,7 @@ async function loadReport() {
   buildCustomerFilter(data.table.map(r => r.customer));
   document.getElementById('reportTableWrap').style.display = 'block';
   renderReportTable();
+  } finally { hideLoader(); }
 }
 
 /* ── Customer drill-down modal ── */
@@ -949,7 +969,7 @@ async function openCustModal(customer) {
   document.getElementById('custModalLoading').style.display = 'block';
   document.getElementById('custModalChart').style.display   = 'none';
   document.getElementById('custModal').classList.remove('hidden');
-
+  showLoader();
   const res  = await fetch(`/report/customer?customer=${encodeURIComponent(customer)}&from_date=${from}&to_date=${to}`);
   const data = await res.json();
 
@@ -1002,6 +1022,7 @@ async function openCustModal(customer) {
       },
     },
   });
+  hideLoader();
 }
 
 /* ── Export CSV ── */
@@ -1047,6 +1068,8 @@ function fmtMonth(ym) {
 let _historyChart = null;
 
 async function loadHistory() {
+  showLoader();
+  try {
   const res  = await fetch('/history');
   const data = await res.json();
   const tbody = document.getElementById('historyTbody');
@@ -1075,6 +1098,7 @@ async function loadHistory() {
   tbody.querySelectorAll('.hist-month-row').forEach(row => {
     row.addEventListener('click', () => toggleHistoryMonth(row.dataset.month, row));
   });
+  } finally { hideLoader(); }
 }
 
 async function toggleHistoryMonth(month, row) {
@@ -1186,4 +1210,14 @@ function typeChip(t) {
   if (t.includes('Compute'))  return `<span class="chip chip-compute">${esc(t)}</span>`;
   if (t.includes('Storage'))  return `<span class="chip chip-storage">${esc(t)}</span>`;
   return `<span class="chip chip-platform">${esc(t)}</span>`;
+}
+
+let _loaderCount = 0;
+function showLoader() {
+  _loaderCount++;
+  document.getElementById('globalLoader').classList.add('active');
+}
+function hideLoader() {
+  _loaderCount = Math.max(0, _loaderCount - 1);
+  if (_loaderCount === 0) document.getElementById('globalLoader').classList.remove('active');
 }

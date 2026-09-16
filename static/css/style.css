@@ -430,3 +430,26 @@ tbody tr:nth-child(even):hover { background: #f3f4f6; }
 .qbtn-month { border-color: #a5b4fc; color: #4338ca; background: #eef2ff; }
 .qbtn-month:hover { background: #e0e7ff; }
 .qbtn-month.active { background: #4338ca; border-color: #4338ca; color: #fff; }
+
+/* ── Global loading bar ── */
+#globalLoader {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+  height: 3px; pointer-events: none; display: none;
+}
+#globalLoader.active { display: block; }
+#globalLoaderBar {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #4f8ef7, #a78bfa);
+  animation: loaderPulse 1.4s ease-in-out infinite;
+  border-radius: 0 2px 2px 0;
+}
+@keyframes loaderPulse {
+  0%   { width: 0%;   opacity: 1; }
+  60%  { width: 85%;  opacity: 1; }
+  100% { width: 95%;  opacity: 0.6; }
+}
+
+/* ── % change card ── */
+.fs-pct { font-size: 17px; font-weight: 700; }
+.fs-pct-up   { color: #dc2626; }
+.fs-pct-down { color: #059669; }
