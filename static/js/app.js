@@ -558,6 +558,19 @@ function _hwForecast(series, steps) {
     );
   }
 
+  // If forecast is much flatter than historical variation (no weekly pattern detected),
+  // blend in recent historical deviations so the forecast doesn't look artificially flat
+  const histStd = Math.sqrt(clean.map(v => (v - seriesMean) ** 2).reduce((a, b) => a + b, 0) / n);
+  const fcMean  = result.reduce((a, b) => a + b, 0) / steps;
+  const fcStd   = Math.sqrt(result.map(v => (v - fcMean) ** 2).reduce((a, b) => a + b, 0) / steps);
+  if (histStd > 0 && fcStd < histStd * 0.25) {
+    result = result.map((v, i) => {
+      const histIdx = (n - steps + i % n + n) % n;
+      const histDev = (clean[histIdx] - seriesMean) * 0.5;
+      return Math.max(floor, v + histDev);
+    });
+  }
+
   return result;
 }
 
