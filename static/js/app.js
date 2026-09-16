@@ -515,15 +515,15 @@ function _hwForecast(series, steps) {
 
   let result;
 
-  if (n >= period * 2) {
+  if (n >= period + 1) {
     // ── Holt-Winters Additive ──
     const m1 = clean.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    const m2 = clean.slice(period, period * 2).reduce((a, b) => a + b, 0) / period;
+    const nPer = Math.max(1, Math.floor(n / period));
+    const m2 = nPer >= 2
+      ? clean.slice(period, period * 2).reduce((a, b) => a + b, 0) / period
+      : m1 + (clean[clean.length - 1] - clean[0]) / Math.max(1, n - 1);
     let level = m1;
-    // Clamp only the *initial* trend to ±20% of mean to avoid explosive start
     let trend = Math.max(-(seriesMean * 0.2), Math.min(seriesMean * 0.2, (m2 - m1) / period));
-
-    const nPer = Math.floor(n / period);
     const s = Array(period).fill(0);
     for (let p = 0; p < nPer; p++) {
       const pm = clean.slice(p * period, (p + 1) * period).reduce((a, b) => a + b, 0) / period;
